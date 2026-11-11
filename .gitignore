@@ -165,3 +165,9 @@ issues/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+
+# 本仓规则文件。上游忽略这些路径，这里显式纳入版本库。
+!AGENTS.md
+!CLAUDE.md
+!docs/ci-cd.md
+!docs/ci-runner.md
