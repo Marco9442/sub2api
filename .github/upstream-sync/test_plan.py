@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -158,6 +159,28 @@ class BodyTest(unittest.TestCase):
         parsed = plan.parse_marker(body)
         self.assertEqual(parsed, {"release": "v0.2.21", "commit": COMMIT_A})
 
+    def test_upstream_closing_keywords_do_not_stay_active(self):
+        notes = (
+            "Closes #1\n"
+            "Fixes Wei-Shaw/sub2api#2\n"
+            "resolved: https://github.com/Wei-Shaw/sub2api/issues/3\n"
+            "close the connection"
+        )
+        body = plan.render_body("v0.2.21", COMMIT_A, notes, "go.mod | 2 +-")
+        self.assertNotIn("Closes #1", body)
+        self.assertIn("`Closes` #1", body)
+        self.assertNotIn("Fixes Wei-Shaw/sub2api#2", body)
+        self.assertNotIn("resolved: https://github.com/Wei-Shaw/sub2api/issues/3", body)
+        self.assertIn("close the connection", body)
+
+    def test_fast_forward_edit_includes_the_new_title(self):
+        text = Path(__file__).with_name("plan.py").read_text()
+        edit = re.search(r'\["gh", "pr", "edit".{0,240}', text, re.S)
+        self.assertIsNotNone(edit)
+        self.assertIn("--title", edit.group(0))
+        self.assertIn("pr_title(tag)", edit.group(0))
+        self.assertEqual(plan.pr_title("v0.2.21"), "sync: 上游 v0.2.21")
+
     def test_long_diff_stat_is_truncated(self):
         body = plan.render_body("v0.2.21", COMMIT_A, "notes", "x\n" * 20000)
         self.assertLess(len(body), 65536)
@@ -183,5 +206,9 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", text)
         self.assertIn("contents: write", text)
         self.assertIn("pull-requests: write", text)
+        self.assertIn("ref: main", text)
         self.assertNotIn("packages:", text)
+        script = Path(__file__).with_name("plan.py").read_text()
+        self.assertIn("refs/remotes/origin/main", script)
+        self.assertNotIn('["git", "merge-base", "--is-ancestor", commit, "HEAD"]', script)
         self.assertNotIn("Closes #", text)

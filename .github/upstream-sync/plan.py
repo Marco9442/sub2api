@@ -12,8 +12,14 @@ UPSTREAM_URL = "https://github.com/Wei-Shaw/sub2api.git"
 BRANCH = "sync/upstream"
 TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 MARKER_RE = re.compile(r"<!-- upstream-sync: release=(v\d+\.\d+\.\d+) commit=([0-9a-f]{40}) -->")
+CLOSING_RE = re.compile(
+    r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)"
+    r"(\s*:?\s*)"
+    r"(#\d+|https://github\.com/\S+/issues/\d+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)"
+)
 BODY_LIMIT = 60000
 DIFF_LIMIT = 12000
+BASE_REF = "refs/remotes/origin/main"
 
 COMMENTS = {
     "already-contained": "上游正式 Release 已经包含在 main，本次不推送分支。",
@@ -84,8 +90,17 @@ def comment_for(reason):
     return COMMENTS[reason]
 
 
+def pr_title(tag):
+    return f"sync: 上游 {tag}"
+
+
+def neutralize_closing_keywords(text):
+    """保留上游 Issue 编号，避免合并时关掉本仓 Issue。"""
+    return CLOSING_RE.sub(lambda match: f"`{match.group(1)}`{match.group(2)}{match.group(3)}", text)
+
+
 def render_body(tag, commit, notes, diff_stat):
-    notes = (notes or "").strip() or "上游没有附带版本说明。"
+    notes = neutralize_closing_keywords((notes or "").strip()) or "上游没有附带版本说明。"
     diff_stat = (diff_stat or "").strip() or "没有文件差异。"
     note = ""
     if len(diff_stat) > DIFF_LIMIT:
@@ -127,10 +142,12 @@ def apply(root):
         print(json.dumps({"action": "none", "reason": "no-stable-release"}))
         return 0
     tag = selected["tag_name"]
+    _run(["git", "fetch", "--no-tags", "origin", f"refs/heads/main:{BASE_REF}"], root)
+    base = _run(["git", "rev-parse", BASE_REF], root)
     _run(["git", "fetch", "--no-tags", UPSTREAM_URL, f"refs/tags/{tag}"], root)
     commit = _run(["git", "rev-parse", "FETCH_HEAD^{commit}"], root)
     contained = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=root
+        ["git", "merge-base", "--is-ancestor", commit, base], cwd=root
     ).returncode == 0
     prs = json.loads(
         _run(
@@ -160,7 +177,7 @@ def apply(root):
     )
     decision.update({"tag": tag, "commit": commit})
     if decision["action"] in ("open", "fast-forward"):
-        diff_stat = _run(["git", "diff", "--stat", f"HEAD...{commit}"], root)
+        diff_stat = _run(["git", "diff", "--stat", f"{base}...{commit}"], root)
         body = render_body(tag, commit, selected.get("body") or "", diff_stat)
         body_path = Path("/tmp") / f"upstream-sync-{tag}.md"
         body_path.write_text(body)
@@ -168,12 +185,16 @@ def apply(root):
         if decision["action"] == "open":
             url = _run(
                 ["gh", "pr", "create", "--base", "main", "--head", BRANCH,
-                 "--title", f"sync: 上游 {tag}", "--body-file", str(body_path)],
+                 "--title", pr_title(tag), "--body-file", str(body_path)],
                 root,
             )
             decision["url"] = url
         else:
-            _run(["gh", "pr", "edit", str(open_pr["number"]), "--body-file", str(body_path)], root)
+            _run(
+                ["gh", "pr", "edit", str(open_pr["number"]),
+                 "--title", pr_title(tag), "--body-file", str(body_path)],
+                root,
+            )
     elif decision["action"] == "comment":
         _run(
             ["gh", "pr", "comment", str(open_pr["number"]), "--body", comment_for(decision["reason"])],
