@@ -1,6 +1,6 @@
 # sub2api 项目开发指南
 
-> 本文档记录项目环境配置、常见坑点和注意事项，供 Claude Code 和团队成员参考。
+> 本文件是旧的本机笔记，不是本仓规则。协作看 [CONTRIBUTING.md](CONTRIBUTING.md)，CI 与发布看 [docs/ci-cd.md](docs/ci-cd.md)。
 
 ## 一、项目基本信息
 

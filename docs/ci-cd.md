@@ -56,6 +56,8 @@ PR 附版本说明和相对 `main` 的改动范围。不试合并，不生成冲
 
 用户令牌访问 `repos/Marco9442/sub2api/installation` 会得到 401。该接口要 App JWT，不能当成安装丢失。App 是否可用，以 `upstream-sync` 作业能否取出 token 为准。
 
+解决同步冲突时，丢掉三份 README 的赞助段、`assets/partners/`、Star History、Trendshift 和 README 许可证段。根目录 `LICENSE` 保持 AGPL-3.0。`CLA.md` 不是本仓贡献协议，上游加回时丢掉。`docs/legal/` 保持运行时原文。
+
 ## 发布
 
 `release.yml` 由 `v*` tag 和已有的 `workflow_dispatch` 触发。推 `v*` tag 时，运行的是该 tag 上的 workflow 和 `.github/release-tools`。守卫先进入这个提交。
