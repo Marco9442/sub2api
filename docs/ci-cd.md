@@ -12,13 +12,25 @@
 | `test` | `ubuntu-latest` | Go 单元测试和集成测试。集成测试需要 Docker |
 | `frontend` | `ubuntu-latest` | 前端类型检查和关键测试 |
 | `golangci-lint` | `ubuntu-latest` | 后端 lint |
-| `release-helpers` | `ubuntu-latest` | 发布辅助脚本的单元测试和 `bash -n` |
+| `release-helpers` | `ubuntu-latest` | 发布辅助脚本、上游同步决策的单元测试，以及 `bash -n` |
 
 同一 PR 的新推送不会取消旧运行。工作流末尾还没有 `pr-status`。
 
 `Security Scan` 在任意 `push`、`pull_request` 和每周一 `03:00 UTC` 运行。末尾还没有 `security-status`。
 
 `cla.yml` 只在 `github.repository == 'Wei-Shaw/sub2api'` 时执行。本仓不把它列为必过检查。冲突解决时保留这行守卫。
+
+## 上游同步
+
+`Upstream Sync`（`.github/workflows/upstream-sync.yml`）每天 `02:17 UTC` 运行，也可以手动触发。它只查看 `Wei-Shaw/sub2api` 的最新正式 Release，把该 Release 指向的源码提交提案到长期分支 `sync/upstream`。
+
+PR 附版本说明和相对 `main` 的改动范围。不试合并，不生成冲突清单，不合并，不解决冲突，不推 tag，不发镜像。冲突可以留在 PR 上，任务仍然成功。
+
+已经包含在 `main` 的正式 Release、draft、prerelease，以及没有正式 Release 的上游提交，都不产生 PR。落后多个正式 Release 时只提案最新一个。
+
+同一 Release 已有整理提交时，本次不推送分支。更新的正式 Release 若没有整理提交则快进；已有整理提交，或新 Release 不是当前提案的后继，则只评论、不覆盖。
+
+同步 App 尚未配置。工作流使用作业 `GITHUB_TOKEN` 推送 `sync/upstream` 并打开 PR。这个身份不在任何绕过名单里。`GITHUB_TOKEN` 的推送不会触发其他 workflow。
 
 ## 发布
 

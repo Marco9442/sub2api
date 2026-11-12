@@ -1,6 +1,6 @@
 # 协作规范
 
-本仓库是 `Wei-Shaw/sub2api` 的私有二开，不是 GitHub fork。开始前阅读 [AGENTS.md](AGENTS.md)。
+本仓库是 `Wei-Shaw/sub2api` 的公开二开，不是 GitHub fork。开始前阅读 [AGENTS.md](AGENTS.md)。
 
 交流、Issue、PR、Review 和合并说明使用简体中文。代码、标识符、路径保持英文。
 
