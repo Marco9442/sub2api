@@ -2,6 +2,7 @@
 """Propose the latest official upstream release. Never merges or publishes."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,6 +21,7 @@ CLOSING_RE = re.compile(
 BODY_LIMIT = 60000
 DIFF_LIMIT = 12000
 BASE_REF = "refs/remotes/origin/main"
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 COMMENTS = {
     "already-contained": "上游正式 Release 已经包含在 main，本次不推送分支。",
@@ -121,6 +123,61 @@ def render_body(tag, commit, notes, diff_stat):
     return body
 
 
+def clear_checkout_credentials_command():
+    return ["git", "config", "--local", "--unset-all", "http.https://github.com/.extraheader"]
+
+
+def push_command(repo, commit):
+    """Push with an environment token. The token stays out of argv and the URL."""
+    if not REPO_RE.fullmatch(repo or ""):
+        raise SystemExit("GITHUB_REPOSITORY is invalid")
+    helper = '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+    return [
+        "git",
+        "-c", "credential.helper=",
+        "-c", f"credential.helper={helper}",
+        "push",
+        f"https://github.com/{repo}.git",
+        f"{commit}:refs/heads/{BRANCH}",
+    ]
+
+
+def _push_sync_branch(commit, root):
+    if not os.environ.get("GH_TOKEN"):
+        raise SystemExit("GH_TOKEN is required")
+    completed = subprocess.run(
+        clear_checkout_credentials_command(), cwd=root, text=True, capture_output=True
+    )
+    # 5 means the checkout header was not set. Any other failure must stop the push.
+    if completed.returncode not in (0, 5):
+        raise subprocess.CalledProcessError(
+            completed.returncode, clear_checkout_credentials_command(), completed.stdout, completed.stderr
+        )
+    _run(push_command(os.environ.get("GITHUB_REPOSITORY", ""), commit), root)
+
+
+def releases_read_token():
+    """Public upstream reads stay on the job token. The App token cannot see other repos."""
+    read_token = os.environ.get("GITHUB_TOKEN", "")
+    app_token = os.environ.get("GH_TOKEN", "")
+    if not read_token:
+        raise SystemExit("GITHUB_TOKEN is required to read upstream releases")
+    if app_token and read_token == app_token:
+        raise SystemExit("GITHUB_TOKEN must stay the checkout token")
+    return read_token
+
+
+def upstream_releases_command():
+    return ["gh", "api", "--paginate", f"repos/{UPSTREAM_REPO}/releases", "--jq", ".[]"]
+
+
+def _run_with_token(args, cwd, token):
+    env = os.environ.copy()
+    env["GH_TOKEN"] = token
+    env["GITHUB_TOKEN"] = token
+    return subprocess.check_output(args, cwd=cwd, text=True, env=env).strip()
+
+
 def _run(args, cwd):
     return subprocess.check_output(args, cwd=cwd, text=True).strip()
 
@@ -133,10 +190,7 @@ def _try_run(args, cwd):
 
 
 def apply(root):
-    raw = _run(
-        ["gh", "api", "--paginate", f"repos/{UPSTREAM_REPO}/releases", "--jq", ".[]"],
-        root,
-    )
+    raw = _run_with_token(upstream_releases_command(), root, releases_read_token())
     selected = select_latest(parse_releases(raw))
     if selected is None:
         print(json.dumps({"action": "none", "reason": "no-stable-release"}))
@@ -181,7 +235,7 @@ def apply(root):
         body = render_body(tag, commit, selected.get("body") or "", diff_stat)
         body_path = Path("/tmp") / f"upstream-sync-{tag}.md"
         body_path.write_text(body)
-        _run(["git", "push", "origin", f"{commit}:refs/heads/{BRANCH}"], root)
+        _push_sync_branch(commit, root)
         if decision["action"] == "open":
             url = _run(
                 ["gh", "pr", "create", "--base", "main", "--head", BRANCH,

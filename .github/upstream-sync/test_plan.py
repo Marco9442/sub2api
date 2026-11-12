@@ -1,7 +1,9 @@
 import importlib.util
 import json
+import os
 import re
 import unittest
+import unittest.mock
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("plan", Path(__file__).with_name("plan.py"))
@@ -204,12 +206,73 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("group: upstream-sync", text)
         self.assertIn("cancel-in-progress: false", text)
-        self.assertNotIn("permissions:", text)
-        self.assertNotIn("workflows:", text)
-        self.assertIn("不写 permissions", text)
+        self.assertIn("environment: upstream-sync", text)
+        self.assertIn("contents: read", text)
+        self.assertIn("actions/create-github-app-token@v2", text)
+        self.assertIn("UPSTREAM_SYNC_APP_ID", text)
+        self.assertIn("UPSTREAM_SYNC_APP_PRIVATE_KEY", text)
+        self.assertIn("repositories: sub2api", text)
+        self.assertIn("permission-contents: write", text)
+        self.assertIn("permission-pull-requests: write", text)
+        self.assertIn("permission-workflows: write", text)
+        self.assertIn("persist-credentials: false", text)
+        self.assertIn("steps.app.outputs.token", text)
         self.assertIn("ref: main", text)
+        self.assertNotRegex(text, r"(?m)^[ ]+workflows:\s")
+        self.assertNotIn("github.token", text)
+        self.assertNotIn("GITHUB_TOKEN:", text)
         self.assertNotIn("packages:", text)
         script = Path(__file__).with_name("plan.py").read_text()
         self.assertIn("refs/remotes/origin/main", script)
+        self.assertNotIn('["git", "push", "origin"', script)
         self.assertNotIn('["git", "merge-base", "--is-ancestor", commit, "HEAD"]', script)
         self.assertNotIn("Closes #", text)
+        docs = Path(__file__).resolve().parents[2].joinpath("docs", "ci-cd.md").read_text()
+        self.assertIn("sub2api-upstream-sync", docs)
+        self.assertIn("environment `upstream-sync`", docs)
+        self.assertNotIn("省略该键后，这个作业可以推送", docs)
+        self.assertIn("发布 App 尚未配置", docs)
+
+
+class PushCommandTest(unittest.TestCase):
+    def test_push_command_keeps_the_token_out_of_the_url(self):
+        commit = "b" * 40
+        command = plan.push_command("Marco9442/sub2api", commit)
+        rendered = " ".join(command)
+        self.assertIn("https://github.com/Marco9442/sub2api.git", command)
+        self.assertIn(f"{commit}:refs/heads/sync/upstream", command)
+        self.assertNotIn("--force", command)
+        self.assertNotIn("ghs_", rendered)
+        self.assertNotIn("gho_", rendered)
+        self.assertNotIn("ghp_", rendered)
+        self.assertIn("password=$GH_TOKEN", rendered)
+        self.assertTrue(any(part == "credential.helper=" for part in command))
+        self.assertEqual(
+            plan.clear_checkout_credentials_command(),
+            ["git", "config", "--local", "--unset-all", "http.https://github.com/.extraheader"],
+        )
+
+    def test_push_command_rejects_a_repository_outside_the_expected_shape(self):
+        with self.assertRaises(SystemExit):
+            plan.push_command("https://user:token@github.com/evil/repo", "c" * 40)
+
+    def test_upstream_releases_are_read_with_the_job_token(self):
+        script = Path(__file__).with_name("plan.py").read_text()
+        window = re.search(r"def apply\(root\):.{0,700}", script, re.S)
+        self.assertIsNotNone(window)
+        self.assertIn("_run_with_token(upstream_releases_command(), root, releases_read_token())", window.group(0))
+        self.assertNotIn("GH_TOKEN", window.group(0))
+        self.assertEqual(
+            plan.upstream_releases_command(),
+            ["gh", "api", "--paginate", "repos/Wei-Shaw/sub2api/releases", "--jq", ".[]"],
+        )
+
+    def test_releases_read_token_rejects_the_app_token(self):
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_TOKEN": "job", "GH_TOKEN": "app"}, clear=False):
+            self.assertEqual(plan.releases_read_token(), "job")
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_TOKEN": "same", "GH_TOKEN": "same"}, clear=False):
+            with self.assertRaises(SystemExit):
+                plan.releases_read_token()
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_TOKEN": "", "GH_TOKEN": "app"}, clear=False):
+            with self.assertRaises(SystemExit):
+                plan.releases_read_token()

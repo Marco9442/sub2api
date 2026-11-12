@@ -5,8 +5,7 @@ on:
     - cron: '17 2 * * *'
   workflow_dispatch:
 
-# 不写 permissions。出现这个键后，GITHUB_TOKEN 就失去修改 workflow 文件的隐式权限。
-# 仓库默认令牌必须是 read and write，这个作业才能推送上游提交里的 workflow 文件。
+# 推送身份是仅安装在本仓的 GitHub App。作业令牌只读检出，不能改 workflow 文件。
 
 concurrency:
   group: upstream-sync
@@ -15,15 +14,31 @@ concurrency:
 jobs:
   propose:
     runs-on: ubuntu-latest
+    environment: upstream-sync
+    permissions:
+      contents: read
     steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.UPSTREAM_SYNC_APP_ID }}
+          private-key: ${{ secrets.UPSTREAM_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: sub2api
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
       - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Propose the latest official upstream release
         env:
-          GH_TOKEN: ${{ github.token }}
+          # 不覆盖自动注入的 GITHUB_TOKEN。读取上游公开 Release 用作业令牌，推送和开 PR 用 App 令牌。
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python .github/upstream-sync/plan.py apply
