@@ -206,6 +206,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", text)
         self.assertIn("contents: write", text)
         self.assertIn("pull-requests: write", text)
+        self.assertIn("workflows: write", text)
         self.assertIn("ref: main", text)
         self.assertNotIn("packages:", text)
         script = Path(__file__).with_name("plan.py").read_text()
