@@ -236,6 +236,9 @@ status = entry.get("status", "present")
 if status == "absent":
     print("manifest unknown", file=sys.stderr)
     sys.exit(1)
+if status == "tag_missing":
+    print(f"ERROR: {ref}: not found", file=sys.stderr)
+    sys.exit(1)
 if status == "empty":
     sys.exit(0)
 if status == "error":
@@ -302,15 +305,25 @@ json.dump(entry["body"], sys.stdout)
         manifests.append({'platform': {'os': 'unknown', 'architecture': 'unknown'}})
         if extra:
             manifests.extend(extra)
+        labels = {
+            'org.opencontainers.image.revision': sha,
+            'org.opencontainers.image.source': source,
+        }
         body = {'manifest': {'manifests': manifests}}
         if len(arches) == 1:
             body['image'] = {
                 'os': 'linux',
                 'architecture': arches[0],
-                'config': {labels_key: {
-                    'org.opencontainers.image.revision': sha,
-                    'org.opencontainers.image.source': source,
-                }},
+                'config': {labels_key: labels},
+            }
+        else:
+            body['image'] = {
+                f'linux/{arch}': {
+                    'os': 'linux',
+                    'architecture': arch,
+                    'config': {labels_key: labels},
+                }
+                for arch in arches
             }
         return {'status': 'present', 'body': body}
 
@@ -403,6 +416,51 @@ json.dump(entry["body"], sys.stdout)
                 proc = self.run_images(env)
                 self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertNotIn('--push', log_path.read_text())
+
+    def test_fork_refuses_version_tag_with_other_identity(self):
+        version = '0.2.21-fork.1'
+        for simple in (False, True):
+            refs, arches = self.expected_refs(version, simple)
+            version_refs = [ref for ref in refs if ref.rsplit(':', 1)[-1] == version]
+            wrong_sha = self.matching_fixture(version, simple)
+            bare = self.matching_fixture(version, simple)
+            for ref in version_refs:
+                wrong_sha[ref] = self.present_image(arches, sha='b' * 40)
+                body = self.present_image(arches)['body']
+                body.pop('image', None)
+                bare[ref] = {'status': 'present', 'body': body}
+            cases = {'sha': wrong_sha}
+            if not simple:
+                cases['bare'] = bare
+            for name, fixture in cases.items():
+                with self.subTest(simple=simple, name=name):
+                    env, log_path = self.image_env(
+                        f'version-{name}-{simple}', version, simple, fixture, None)
+                    proc = self.run_images(env)
+                    self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                    self.assertNotIn('--push', log_path.read_text())
+
+    def test_fork_treats_only_the_tag_itself_as_missing(self):
+        version = '0.2.21-fork.1'
+        refs, _ = self.expected_refs(version, False)
+        child = 'content at https://example.test/v2/sub2api/blobs/sha256:abc not found'
+        platform = 'image linux/amd64 not found'
+        cases = {
+            'child': {ref: {'status': 'error', 'text': child} for ref in refs},
+            'platform': {ref: {'status': 'error', 'text': platform} for ref in refs},
+        }
+        for name, fixture in cases.items():
+            with self.subTest(name=name):
+                env, log_path = self.image_env(f'broken-{name}', version, False, fixture, None)
+                proc = self.run_images(env)
+                self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertNotIn('--push', log_path.read_text())
+
+        missing = {ref: {'status': 'tag_missing'} for ref in refs}
+        env, log_path = self.image_env('tag-missing', version, False, missing, None)
+        proc = self.run_images(env)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('--push', log_path.read_text())
 
 
 if __name__ == '__main__':

@@ -24,8 +24,8 @@ def main(argv):
     registries = [item for item in args.registries.split(",") if item]
     arches = [item for item in args.arches.split(",") if item]
     states = [
-        inspect(ref, expected, args.sha, args.repository, check_identity)
-        for ref, expected, check_identity in target_refs(registries, args.version, arches)
+        inspect(ref, expected, args.sha, args.repository)
+        for ref, expected in target_refs(registries, args.version, arches)
     ]
     if any(state == "error" for state in states):
         print("image inspect failed or was unreadable", file=sys.stderr)
@@ -42,13 +42,13 @@ def main(argv):
 def target_refs(registries, version, arches):
     refs = []
     for registry in registries:
-        refs.append((f"{registry}:{version}", arches, False))
+        refs.append((f"{registry}:{version}", arches))
         for arch in arches:
-            refs.append((f"{registry}:{version}-{arch}", [arch], True))
+            refs.append((f"{registry}:{version}-{arch}", [arch]))
     return refs
 
 
-def inspect(ref, expected_arches, sha, repository, check_identity):
+def inspect(ref, expected_arches, sha, repository):
     try:
         proc = subprocess.run(
             ["docker", "buildx", "imagetools", "inspect", "--format", "{{json .}}", ref],
@@ -59,7 +59,7 @@ def inspect(ref, expected_arches, sha, repository, check_identity):
         return "error"
     combined = f"{proc.stdout}\n{proc.stderr}".lower()
     if proc.returncode != 0:
-        if "not found" in combined or "manifest unknown" in combined:
+        if tag_absent(ref, combined):
             return "absent"
         return "error"
     if not proc.stdout.strip():
@@ -73,13 +73,44 @@ def inspect(ref, expected_arches, sha, repository, check_identity):
     expected = {("linux", arch) for arch in expected_arches}
     if platforms_of(body) != expected:
         return "mismatch"
-    if not check_identity:
-        return "match"
-    labels = labels_of(body)
-    source = f"https://github.com/{repository}"
-    if labels.get(REVISION) != sha or labels.get(SOURCE) != source:
+    if not identity_matches(body, expected_arches, sha, repository):
         return "mismatch"
     return "match"
+
+
+def tag_absent(ref, text):
+    # 只认标签本身不存在。子 manifest 读失败也会带 not found，不能当成缺失后重建覆盖。
+    text = text.lower()
+    if "content at " in text or "sha256:" in text:
+        return False
+    if f"{ref.lower()}: not found" in text:
+        return True
+    return "manifest unknown" in text
+
+
+def identity_matches(body, expected_arches, sha, repository):
+    source = f"https://github.com/{repository}"
+    image = body.get("image")
+    if not isinstance(image, dict):
+        return False
+    if is_platform_map(image):
+        return all(
+            same_identity(config_labels((image.get(f"linux/{arch}") or {}).get("config")), sha, source)
+            for arch in expected_arches
+        )
+    if len(expected_arches) != 1:
+        return False
+    return same_identity(labels_of(body), sha, source)
+
+
+def is_platform_map(image):
+    if "config" in image or "architecture" in image:
+        return False
+    return any(isinstance(value, dict) for value in image.values())
+
+
+def same_identity(labels, sha, source):
+    return labels.get(REVISION) == sha and labels.get(SOURCE) == source
 
 
 def platforms_of(body):
@@ -102,7 +133,12 @@ def add_platform(platforms, platform):
 
 
 def labels_of(body):
-    config = ((body.get("image") or {}).get("config") or {})
+    return config_labels((body.get("image") or {}).get("config"))
+
+
+def config_labels(config):
+    if not isinstance(config, dict):
+        return {}
     for key in ("Labels", "labels"):
         value = config.get(key)
         if isinstance(value, dict):

@@ -38,7 +38,7 @@ PR 附版本说明和相对 `main` 的改动范围。不试合并，不生成冲
 
 镜像发布到此为止。`baima-api` 自己选择版本并部署。本仓库不改生产。
 
-fork 发布不移动 `latest`、major、major.minor。镜像三态是：目标标签全部不存在才构建上传；全部存在且来源、提交、架构一致才跳过；缺一部分或不一致则失败。版本含 `-fork.` 时，应用内更新和回滚关闭，也不会把 fork 版本写回 `VERSION`。本仓不是 `Wei-Shaw/sub2api` 时，版本同步直接跳过。官方 `dry_run` 仍按 `backend/cmd/server/VERSION` 做构建验证，不代表 fork 预览。
+fork 发布不移动 `latest`、major、major.minor。镜像三态是：目标标签全部不存在才构建上传；全部存在，且每个标签（含精确版本标签的每个平台）的来源、提交、架构一致才跳过；缺一部分或不一致则失败。只有标签本身不存在才算缺失，子 manifest 或配置读失败则失败。版本含 `-fork.` 时，应用内更新和回滚关闭，也不会把 fork 版本写回 `VERSION`。本仓不是 `Wei-Shaw/sub2api` 时，版本同步直接跳过。官方 `dry_run` 仍按 `backend/cmd/server/VERSION` 做构建验证，不代表 fork 预览。
 
 ## 仓库设置
 
