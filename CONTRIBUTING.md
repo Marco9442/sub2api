@@ -16,17 +16,42 @@
 
 一个提交只含一个原子变更。标题 `<type>(<scope>): <简短中文描述>`，不超过 72 字符。没有合适 scope 时可以省略括号。
 
+## 拉取与推送
+
+`origin` 是 `git@github.com:Marco9442/sub2api.git`。SSH 无响应时，当次命令改用 HTTPS。git config、upstream 和 URL 保持原样。
+
+```bash
+git -c url.https://github.com/.insteadOf=git@github.com: -c credential.helper='!gh auth git-credential' pull --ff-only origin main
+```
+
+公开历史可以无凭据拉取：
+
+```bash
+git fetch --no-tags https://github.com/Marco9442/sub2api.git <ref>
+```
+
+推送写明 refspec，例如 `HEAD:refs/heads/<branch>` 或 `refs/tags/<tag>`。
+
 ## PR 与合并
 
 PR 目标 `main`。标题同样使用 `<type>: <简短中文描述>`。正文为：关联 Issue（`Closes #N`）→ 变更说明 → 验证结果 → 影响与限制。同步 PR 不写 `Closes`。
 
 直接开正式 PR。不使用 Draft / Ready，也不把检查分成两阶段。
 
-非作者至少一人批准。作者自己的 Review、Agent 自审和评论不算批准。`CODEOWNERS` 只提示维护者，不作为必过的代码所有者批准。
+非作者至少一人批准。作者自己的 Review、Agent 自审、评论和 Codex 自动 review 不算批准。作者的 PR 因此停在等待他人批准。`gh pr checks` 退出码 8 表示检查尚未结束。本仓 `cla` 跳过不算失败。只使用当前 head 的检查结果。`CODEOWNERS` 只提示维护者，不作为必过的代码所有者批准。
 
 管理员必须走 PR，不能直推 `main`。他人审批可以在 PR 上绕过；PR 本身和已写入的必过检查不能绕过。必过检查的写入条件见 [docs/ci-cd.md](docs/ci-cd.md)。
 
 合并只用 Merge Commit。
+
+这一次合并已经授权时：
+
+```bash
+gh pr merge <number> --merge --admin --match-head-commit <sha>
+gh pr view <number> --json state --jq .state
+```
+
+第一行退出码为 0 且没有输出时，用第二行确认状态是 `MERGED`。有效审查意见先回复并解决。
 
 ## 授权
 
@@ -39,3 +64,7 @@ PR 目标 `main`。标题同样使用 `<type>: <简短中文描述>`。正文为
 ## 发布与部署
 
 发镜像、部署生产、合并代码，三者分开确认。本仓库不部署生产。发布现状以 [docs/ci-cd.md](docs/ci-cd.md) 为准，不要把尚未落地的发布规则写成当前工作流已经具备。
+
+## 依赖
+
+升级进入 PR 之前，先对照变更日志和本仓用法，确认兼容。不能确认的项保持原版本。
