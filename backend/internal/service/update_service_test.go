@@ -185,3 +185,78 @@ func TestUpdateServiceRollbackToVersionAcceptsVPrefix(t *testing.T) {
 	require.NotErrorIs(t, err, ErrRollbackVersionNotAllowed)
 	require.Contains(t, err.Error(), "no compatible release found")
 }
+
+type panicUpdateGitHub struct{}
+
+func (panicUpdateGitHub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
+	panic("FetchLatestRelease")
+}
+
+func (panicUpdateGitHub) FetchRecentReleases(context.Context, string, int) ([]*GitHubRelease, error) {
+	panic("FetchRecentReleases")
+}
+
+func (panicUpdateGitHub) DownloadFile(context.Context, string, string, int64) error {
+	panic("DownloadFile")
+}
+
+func (panicUpdateGitHub) FetchChecksumFile(context.Context, string) ([]byte, error) {
+	panic("FetchChecksumFile")
+}
+
+type recordingUpdateCache struct {
+	data string
+	gets int
+	sets int
+}
+
+func (s *recordingUpdateCache) GetUpdateInfo(context.Context) (string, error) {
+	s.gets++
+	if s.data == "" {
+		return "", errors.New("cache miss")
+	}
+	return s.data, nil
+}
+
+func (s *recordingUpdateCache) SetUpdateInfo(context.Context, string, time.Duration) error {
+	s.sets++
+	return nil
+}
+
+func TestUpdateServiceOfficialReleaseStillReportsUpdate(t *testing.T) {
+	svc := NewUpdateService(
+		&recordingUpdateCache{},
+		&updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.2.22"}},
+		"0.2.21",
+		"release",
+	)
+
+	info, err := svc.CheckUpdate(context.Background(), false)
+
+	require.NoError(t, err)
+	require.True(t, info.HasUpdate)
+	require.Equal(t, "0.2.22", info.LatestVersion)
+}
+
+func TestUpdateServiceForkReleaseDisablesUpdateAndRollback(t *testing.T) {
+	cache := &recordingUpdateCache{data: `{"latest":"0.2.22","timestamp":` + "9999999999" + `}`}
+	svc := NewUpdateService(cache, panicUpdateGitHub{}, "0.2.21-fork.1", "release")
+
+	info, err := svc.CheckUpdate(context.Background(), false)
+
+	require.NoError(t, err)
+	require.False(t, info.HasUpdate)
+	require.Equal(t, "0.2.21-fork.1", info.CurrentVersion)
+	require.Zero(t, cache.gets)
+	require.Zero(t, cache.sets)
+
+	require.ErrorIs(t, svc.PerformUpdate(context.Background()), ErrForkUpdateDisabled)
+	require.NotErrorIs(t, svc.PerformUpdate(context.Background()), ErrNoUpdateAvailable)
+	require.ErrorIs(t, svc.Rollback(), ErrForkUpdateDisabled)
+	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "0.2.21"), ErrForkUpdateDisabled)
+
+	versions, err := svc.ListRollbackVersions(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, versions)
+	require.Empty(t, versions)
+}

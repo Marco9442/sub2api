@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${RELEASE_VERSION:?}" "${RELEASE_SHA:?}" "${GITHUB_REPOSITORY:?}" "${RUNNER_TEMP:?}"
+here=$(cd "$(dirname "$0")" && pwd)
 owner=${GITHUB_REPOSITORY%%/*}
 registries=("ghcr.io/${owner,,}/sub2api")
 if [[ ${SIMPLE_RELEASE:-false} != true && ${DOCKERHUB_USERNAME:-skip} != skip ]]; then
@@ -8,6 +9,30 @@ if [[ ${SIMPLE_RELEASE:-false} != true && ${DOCKERHUB_USERNAME:-skip} != skip ]]
 fi
 arches=(amd64 arm64)
 if [[ ${SIMPLE_RELEASE:-false} == true ]]; then arches=(amd64); fi
+fork=false
+if [[ ${FORK_RELEASE:-false} == true || ${RELEASE_VERSION} == *-fork.* ]]; then
+  fork=true
+fi
+if [[ $fork == true && ${DRY_RUN:-false} != true ]]; then
+  registry_csv=$(IFS=,; echo "${registries[*]}")
+  arch_csv=$(IFS=,; echo "${arches[*]}")
+  set +e
+  python3 "$here/image_state.py" decide \
+    --version "$RELEASE_VERSION" \
+    --sha "$RELEASE_SHA" \
+    --repository "$GITHUB_REPOSITORY" \
+    --registries "$registry_csv" \
+    --arches "$arch_csv"
+  code=$?
+  set -e
+  if [[ $code -eq 10 ]]; then
+    echo "existing images match this commit; skipping push"
+    exit 0
+  fi
+  if [[ $code -ne 0 ]]; then
+    exit "$code"
+  fi
+fi
 for arch in "${arches[@]}"; do
   args=(--platform "linux/$arch" --file ".release-context/$arch/Dockerfile"
     --label "org.opencontainers.image.version=$RELEASE_VERSION"
@@ -16,7 +41,10 @@ for arch in "${arches[@]}"; do
   for registry in "${registries[@]}"; do
     args+=(--tag "$registry:$RELEASE_VERSION-$arch")
     if [[ ${SIMPLE_RELEASE:-false} == true ]]; then
-      args+=(--tag "$registry:$RELEASE_VERSION" --tag "$registry:latest")
+      args+=(--tag "$registry:$RELEASE_VERSION")
+      if [[ $fork != true ]]; then
+        args+=(--tag "$registry:latest")
+      fi
     fi
   done
   if [[ ${DRY_RUN:-false} == true ]]; then
@@ -30,9 +58,11 @@ if [[ ${DRY_RUN:-false} != true && ${SIMPLE_RELEASE:-false} != true ]]; then
   major=${RELEASE_VERSION%%.*}
   minor=${RELEASE_VERSION#*.}; minor=${minor%%.*}
   for registry in "${registries[@]}"; do
-    docker buildx imagetools create \
-      --tag "$registry:$RELEASE_VERSION" --tag "$registry:latest" \
-      --tag "$registry:$major.$minor" --tag "$registry:$major" \
+    tags=(--tag "$registry:$RELEASE_VERSION")
+    if [[ $fork != true ]]; then
+      tags+=(--tag "$registry:latest" --tag "$registry:$major.$minor" --tag "$registry:$major")
+    fi
+    docker buildx imagetools create "${tags[@]}" \
       "$registry:$RELEASE_VERSION-amd64" "$registry:$RELEASE_VERSION-arm64"
   done
 fi
