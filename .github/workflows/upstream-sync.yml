@@ -5,8 +5,8 @@ on:
     - cron: '17 2 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: read
+# 不写 permissions。出现这个键后，GITHUB_TOKEN 就失去修改 workflow 文件的隐式权限。
+# 仓库默认令牌必须是 read and write，这个作业才能推送上游提交里的 workflow 文件。
 
 concurrency:
   group: upstream-sync
@@ -15,10 +15,6 @@ concurrency:
 jobs:
   propose:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      workflows: write
     steps:
       - uses: actions/checkout@v6
         with:
