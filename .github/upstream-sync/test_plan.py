@@ -234,6 +234,38 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("省略该键后，这个作业可以推送", docs)
         self.assertIn("发布 App 尚未配置", docs)
 
+    def test_docs_record_the_release_and_push_constraints(self):
+        root = Path(__file__).resolve().parents[2]
+        docs = root.joinpath("docs", "ci-cd.md").read_text()
+        for phrase in (
+            "v0.2.21-fork.1",
+            "v0.2.21-fork.2",
+            "docker buildx imagetools inspect",
+            "config.Labels",
+            "content at ",
+            "Bypassed rule violations",
+            "read:packages",
+            "prerelease: auto",
+            "同一个 git tag",
+            "govulncheck",
+            "allow_forking",
+            "unittest -k",
+            "SIMPLE_RELEASE",
+            "不能当成安装丢失",
+            "discover -s .github/upstream-sync",
+            "test_plan.WorkflowContractTest",
+            "不要把测试文件路径直接传给",
+        ):
+            self.assertIn(phrase, docs)
+        contributing = root.joinpath("CONTRIBUTING.md").read_text()
+        for phrase in (
+            "credential.helper",
+            "insteadOf",
+            "match-head-commit",
+            "git config、upstream 和 URL 保持原样",
+        ):
+            self.assertIn(phrase, contributing)
+
 
 class PushCommandTest(unittest.TestCase):
     def test_push_command_keeps_the_token_out_of_the_url(self):
