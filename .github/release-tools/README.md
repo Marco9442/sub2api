@@ -1,3 +1,5 @@
+本仓发布语义以 [docs/ci-cd.md](../../docs/ci-cd.md) 为准。这里的 `dry_run` 不是 fork 预览。
+
 # Release matrix
 
 The release workflow builds the frontend once, then runs each configured Go target on its own Linux runner. `CGO_ENABLED=0` permits cross-compilation. The target matrix is read from `.goreleaser.yaml`, including its exclusions; simple releases select Linux amd64 only.

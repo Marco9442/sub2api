@@ -266,6 +266,91 @@ class WorkflowContractTest(unittest.TestCase):
         ):
             self.assertIn(phrase, contributing)
 
+    def test_docs_keep_agent_routing_and_drop_sponsorship(self):
+        root = Path(__file__).resolve().parents[2]
+        license_text = root.joinpath("LICENSE").read_text()
+        self.assertIn("GNU AFFERO GENERAL PUBLIC LICENSE", license_text)
+        self.assertNotIn("LESSER GENERAL PUBLIC LICENSE", license_text)
+
+        for name in ("README.md", "README_CN.md", "README_JA.md"):
+            text = root.joinpath(name).read_text()
+            for banned in (
+                "Sponsors",
+                "赞助商",
+                "スポンサー",
+                "Star History",
+                "スター履歴",
+                "trendshift.io",
+                "assets/partners",
+                "Wesley Liddick",
+            ):
+                self.assertNotIn(banned, text, name)
+            self.assertNotRegex(text, r"(?m)^## (License|许可证|ライセンス)\s*$")
+
+        readme = root.joinpath("README.md").read_text()
+        for phrase in (
+            "## ⚠️ Important Notice",
+            "## Grok / xAI Support",
+            "## Simple Mode",
+            "## TypeSafe / Jev Support",
+            "## Antigravity Support",
+            "OpenAI Responses WebSocket ingress limits",
+            "Force OpenAI upstream HTTP/SSE",
+            "deploy/README.md",
+        ):
+            self.assertIn(phrase, readme)
+        readme_cn = root.joinpath("README_CN.md").read_text()
+        for phrase in (
+            "## Codex Fast/Flex 策略说明",
+            "网关防御纵深建议",
+            "HTTP/2 (h2c)",
+            "## OpenAI 图片模型",
+            "deploy/DATAMANAGEMENTD_CN.md",
+            "deploy/README.md",
+        ):
+            self.assertIn(phrase, readme_cn)
+
+        agents = root.joinpath("AGENTS.md").read_text()
+        for phrase in (
+            "CONTRIBUTING.md",
+            "docs/ci-cd.md",
+            "docs/ci-runner.md",
+            "AGPL-3.0",
+            "deploy/README.md",
+            "docs/agent-resource-safety.md",
+            "DEV_GUIDE.md",
+        ):
+            self.assertIn(phrase, agents)
+
+        docs = root.joinpath("docs", "ci-cd.md").read_text()
+        self.assertIn("AGPL-3.0", docs)
+        self.assertIn("assets/partners", docs)
+        self.assertIn("docs/legal/", docs)
+        self.assertIn("docs/ci-cd.md", root.joinpath("deploy", "DOCKER.md").read_text())
+        self.assertIn("docs/ci-cd.md", root.joinpath(".github", "release-tools", "README.md").read_text())
+        self.assertIn("CONTRIBUTING.md", root.joinpath("DEV_GUIDE.md").read_text())
+
+        self.assertFalse(root.joinpath("CLA.md").exists())
+        self.assertFalse(root.joinpath("assets", "partners").exists())
+        for relative in (
+            "frontend/src/components/common/README.md",
+            "frontend/src/components/layout/EXAMPLES.md",
+            "frontend/src/components/layout/INTEGRATION.md",
+            "frontend/src/router/README.md",
+            "frontend/src/stores/README.md",
+            "frontend/src/views/auth/README.md",
+            "frontend/src/views/auth/USAGE_EXAMPLES.md",
+            "frontend/src/views/auth/VISUAL_GUIDE.md",
+        ):
+            self.assertFalse(root.joinpath(*relative.split("/")).exists(), relative)
+
+        for name in ("docs/PAYMENT.md", "docs/PAYMENT_CN.md"):
+            text = root.joinpath(name).read_text()
+            self.assertNotIn("z-pay.cn", text, name)
+            self.assertNotIn("kyrenpay.com", text, name)
+            self.assertNotIn("uid=23808", text, name)
+            self.assertNotIn("code=SUB2API", text, name)
+
 
 class PushCommandTest(unittest.TestCase):
     def test_push_command_keeps_the_token_out_of_the_url(self):
