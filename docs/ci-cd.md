@@ -30,7 +30,7 @@ PR 附版本说明和相对 `main` 的改动范围。不试合并，不生成冲
 
 同一 Release 已有整理提交时，本次不推送分支。更新的正式 Release 若没有整理提交则快进；已有整理提交，或新 Release 不是当前提案的后继，则只评论、不覆盖。
 
-同步 App 尚未配置。工作流使用作业 `GITHUB_TOKEN` 推送 `sync/upstream` 并打开 PR，权限是 `contents: write`、`pull-requests: write` 和 `workflows: write`。上游提交会改 workflow 文件，没有最后一项时推送会被拒绝。这个身份不在任何绕过名单里。`GITHUB_TOKEN` 的推送不会触发其他 workflow。
+同步 App 尚未配置。这个工作流不写 `permissions`。只要出现这个键，作业 `GITHUB_TOKEN` 就失去修改 `.github/workflows` 的隐式权限，推送上游提交会被拒绝。仓库默认工作流令牌是 read and write，所以省略该键后，这个作业可以推送 `sync/upstream` 并打开 PR。其他工作流都写了自己的 `permissions`，不会继承这份额外写权限。这个身份不在任何绕过名单里。`GITHUB_TOKEN` 的推送不会触发其他 workflow。
 
 ## 发布
 
