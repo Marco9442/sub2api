@@ -34,11 +34,11 @@ PR 附版本说明和相对 `main` 的改动范围。不试合并，不生成冲
 
 ## 发布
 
-`release.yml` 由 `v*` tag 和已有的 `workflow_dispatch` 触发。本仓还没有 GitHub Release，也没有 GHCR 包。
+`release.yml` 由 `v*` tag 和已有的 `workflow_dispatch` 触发。`v0.2.21` 已经发布。GHCR 上的 `0.2.21`、`latest`、`0.2`、`0` 是同一次官方发布。
 
 镜像发布到此为止。`baima-api` 自己选择版本并部署。本仓库不改生产。
 
-fork 版本号、浮动标签守卫、镜像三态和应用内更新拦截尚未进入工作流。它们属于后续 Issue，不在本文假装已经生效。官方 `dry_run` 按 `backend/cmd/server/VERSION` 做构建验证，不代表 fork 预览。
+fork 发布不移动 `latest`、major、major.minor。镜像三态是：目标标签全部不存在才构建上传；全部存在，且每个标签（含精确版本标签的每个平台）的来源、提交、架构一致才跳过；缺一部分或不一致则失败。只有标签本身不存在才算缺失，子 manifest 或配置读失败则失败。版本含 `-fork.` 时，应用内更新和回滚关闭，也不会把 fork 版本写回 `VERSION`。本仓不是 `Wei-Shaw/sub2api` 时，版本同步直接跳过。官方 `dry_run` 仍按 `backend/cmd/server/VERSION` 做构建验证，不代表 fork 预览。
 
 ## 仓库设置
 
