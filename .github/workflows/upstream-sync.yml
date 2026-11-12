@@ -38,7 +38,10 @@ jobs:
           python-version: '3.12'
       - name: Propose the latest official upstream release
         env:
-          # 不覆盖自动注入的 GITHUB_TOKEN。读取上游公开 Release 用作业令牌，推送和开 PR 用 App 令牌。
+          # GH_TOKEN 是 App 令牌，用于推送和开 PR。
+          # GITHUB_TOKEN 必须显式传入作业令牌，shell 不会自动带上它。
+          # 两者不能相同，否则会用安装令牌去读未安装的上游仓库。
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python .github/upstream-sync/plan.py apply
