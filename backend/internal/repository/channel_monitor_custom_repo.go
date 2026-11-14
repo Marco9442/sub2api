@@ -135,6 +135,24 @@ type historyMetric struct {
 	Tokens sql.NullFloat64
 }
 
+func (r *channelMonitorRepository) WithMonitorTx(ctx context.Context, fn func(context.Context) error) error {
+	if dbent.TxFromContext(ctx) != nil {
+		return fn(ctx)
+	}
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin channel monitor tx: %w", err)
+	}
+	if err := fn(dbent.NewTxContext(ctx, tx)); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit channel monitor tx: %w", err)
+	}
+	return nil
+}
+
 func (r *channelMonitorRepository) GetCustomOverride(ctx context.Context, id int64) (*service.ChannelMonitorCustomOverride, error) {
 	found, err := r.ListCustomOverrides(ctx, []int64{id})
 	if err != nil {
@@ -143,17 +161,33 @@ func (r *channelMonitorRepository) GetCustomOverride(ctx context.Context, id int
 	return found[id], nil
 }
 
-func (r *channelMonitorRepository) ListCustomOverrides(ctx context.Context, ids []int64) (map[int64]*service.ChannelMonitorCustomOverride, error) {
-	out := map[int64]*service.ChannelMonitorCustomOverride{}
-	if len(ids) == 0 {
-		return out, nil
+func (r *channelMonitorRepository) ListAllCustomOverrides(ctx context.Context) ([]*service.ChannelMonitorCustomOverride, error) {
+	found, err := r.listCustomOverrides(ctx, "")
+	if err != nil {
+		return nil, err
 	}
-	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, `
+	items := make([]*service.ChannelMonitorCustomOverride, 0, len(found))
+	for _, ov := range found {
+		items = append(items, ov)
+	}
+	return items, nil
+}
+
+func (r *channelMonitorRepository) ListCustomOverrides(ctx context.Context, ids []int64) (map[int64]*service.ChannelMonitorCustomOverride, error) {
+	if len(ids) == 0 {
+		return map[int64]*service.ChannelMonitorCustomOverride{}, nil
+	}
+	return r.listCustomOverrides(ctx, "WHERE monitor_id = ANY($1)", pq.Array(ids))
+}
+
+func (r *channelMonitorRepository) listCustomOverrides(ctx context.Context, where string, args ...any) (map[int64]*service.ChannelMonitorCustomOverride, error) {
+	out := map[int64]*service.ChannelMonitorCustomOverride{}
+	query := `
 		SELECT monitor_id, ttft_adjust_enabled, ttft_multiplier, ttft_min_ms, ttft_max_ms,
 		       tps_enabled, tps_min, tps_max
 		FROM channel_monitor_custom_overrides
-		WHERE monitor_id = ANY($1)
-	`, pq.Array(ids))
+	` + where
+	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list custom overrides: %w", err)
 	}

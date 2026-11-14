@@ -11,6 +11,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCustomProbeContexts_DoNotInheritShortParentDeadline(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+
+	ping := customPingContext(parent)
+	model, stopModel := customModelContext(parent, 2*time.Second)
+	defer stopModel()
+	write, stopWrite := historyWriteContext(parent, ChannelMonitorModeCustom)
+	defer stopWrite()
+
+	require.NoError(t, ping.Err())
+	require.NoError(t, model.Err())
+	require.NoError(t, write.Err())
+	modelDeadline, ok := model.Deadline()
+	require.True(t, ok)
+	require.Greater(t, time.Until(modelDeadline), time.Second)
+	writeDeadline, ok := write.Deadline()
+	require.True(t, ok)
+	require.Less(t, time.Until(writeDeadline), monitorRunOneBuffer+time.Second)
+}
+
+func TestHistoryWriteContext_V1FollowsParent(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	ctx, stop := historyWriteContext(parent, ChannelMonitorModeV1)
+	stop()
+	cancel()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
+func TestOverridesRemainValid_RejectsMergedBounds(t *testing.T) {
+	cfg := defaultChannelMonitorCustomConfig()
+	cfg.TTFTAdjustEnabled = true
+	cfg.TTFTMinMs = 100
+	cfg.TTFTMaxMs = 1000
+	maxMs := 50
+	err := overridesRemainValid(cfg, []*ChannelMonitorCustomOverride{{TTFTMaxMs: &maxMs}})
+	require.ErrorIs(t, err, ErrChannelMonitorInvalidTTFT)
+	require.NoError(t, overridesRemainValid(cfg, nil))
+}
+
 func TestNormalizeChannelMonitorMode_Custom(t *testing.T) {
 	require.Equal(t, ChannelMonitorModeCustom, normalizeChannelMonitorMode("custom"))
 	require.Equal(t, ChannelMonitorModeCustom, normalizeChannelMonitorMode(" Custom "))

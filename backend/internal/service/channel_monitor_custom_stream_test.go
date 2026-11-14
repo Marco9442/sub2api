@@ -71,6 +71,32 @@ func TestConsumeMonitorSSE_Protocols(t *testing.T) {
 	}
 }
 
+func TestConsumeMonitorSSE_CleanEOFWithTextSucceeds(t *testing.T) {
+	raw := "data: {\"choices\":[{\"delta\":{\"content\":\"pong\"}}]}\n\n"
+	_, text, completed, failed, reason := consumeMonitorSSE(strings.NewReader(raw), openAIChatStreamProtocol, time.Now())
+	require.Equal(t, "pong", text)
+	require.True(t, completed)
+	require.False(t, failed)
+	require.Empty(t, reason)
+}
+
+func TestConsumeMonitorSSE_TruncatedFrameIsNotSuccess(t *testing.T) {
+	raw := "data: {\"choices\":[{\"delta\":{\"content\":\"pong\"}}]}\n\ndata: [DONE]"
+	_, text, completed, failed, reason := consumeMonitorSSE(strings.NewReader(raw), openAIChatStreamProtocol, time.Now())
+	require.Equal(t, "pong", text)
+	require.False(t, completed)
+	require.True(t, failed)
+	require.Contains(t, reason, "truncated")
+}
+
+func TestConsumeMonitorSSE_SizeLimitIsNotSuccess(t *testing.T) {
+	raw := "data: " + strings.Repeat("a", monitorResponseMaxBytes) + "\n\n"
+	_, _, completed, failed, reason := consumeMonitorSSE(strings.NewReader(raw), openAIChatStreamProtocol, time.Now())
+	require.False(t, completed)
+	require.True(t, failed)
+	require.Contains(t, reason, "size limit")
+}
+
 func TestRunCustomCheck_StreamTTFTAndHeaders(t *testing.T) {
 	orig := customMonitorHTTPClient
 	customMonitorHTTPClient = &http.Client{}

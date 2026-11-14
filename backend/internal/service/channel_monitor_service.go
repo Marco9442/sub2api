@@ -188,10 +188,12 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
 	}
-	if err := s.repo.Create(ctx, m); err != nil {
-		return nil, fmt.Errorf("create channel monitor: %w", err)
-	}
-	if err := s.saveCustomOverride(ctx, m.ID, p.CustomOverride); err != nil {
+	if err := s.commitMonitorChange(ctx, p.CustomOverride, func(txCtx context.Context) error {
+		if err := s.repo.Create(txCtx, m); err != nil {
+			return fmt.Errorf("create channel monitor: %w", err)
+		}
+		return nil
+	}, func() int64 { return m.ID }); err != nil {
 		return nil, err
 	}
 	m.CustomOverride = p.CustomOverride
@@ -218,6 +220,9 @@ func (s *ChannelMonitorService) Duplicate(
 		return nil, err
 	}
 	if existing != nil {
+		if err := s.copyMissingCustomOverride(ctx, id, existing); err != nil {
+			return nil, err
+		}
 		return existing, nil
 	}
 
@@ -260,9 +265,19 @@ func (s *ChannelMonitorService) Duplicate(
 		AccountID:            cloneInt64Pointer(source.AccountID),
 		DuplicateOperationID: operationID,
 	}
-	if err := s.repo.Create(ctx, duplicate); err != nil {
-		return nil, fmt.Errorf("duplicate channel monitor: %w", err)
+	sourceOverride, err := s.lookupCustomOverride(ctx, source.ID)
+	if err != nil {
+		return nil, err
 	}
+	if err := s.commitMonitorChange(ctx, sourceOverride, func(txCtx context.Context) error {
+		if err := s.repo.Create(txCtx, duplicate); err != nil {
+			return fmt.Errorf("duplicate channel monitor: %w", err)
+		}
+		return nil
+	}, func() int64 { return duplicate.ID }); err != nil {
+		return nil, err
+	}
+	duplicate.CustomOverride = sourceOverride
 
 	// Match Create/Update response semantics: repository receives ciphertext,
 	// while handlers receive plaintext only so they can return the masked form.
@@ -461,10 +476,12 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 		}
 	}
 
-	if err := s.repo.Update(ctx, existing); err != nil {
-		return nil, fmt.Errorf("update channel monitor: %w", err)
-	}
-	if err := s.saveCustomOverride(ctx, existing.ID, p.CustomOverride); err != nil {
+	if err := s.commitMonitorChange(ctx, p.CustomOverride, func(txCtx context.Context) error {
+		if err := s.repo.Update(txCtx, existing); err != nil {
+			return fmt.Errorf("update channel monitor: %w", err)
+		}
+		return nil
+	}, func() int64 { return existing.ID }); err != nil {
 		return nil, err
 	}
 	if p.CustomOverride != nil {
@@ -650,7 +667,7 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	default:
 		results = s.runModelChecks(ctx, m)
 	}
-	s.persistCheckResults(ctx, m, results)
+	s.persistCheckResults(ctx, rt.Mode, m, results)
 	for _, r := range results {
 		r.LatencyMs, r.TokensPerSec = redactDisplayedMetrics(r.MetricKind, r.Status, r.LatencyMs, r.TokensPerSec)
 	}
@@ -701,8 +718,10 @@ func attachQuotaSnapshot(results []*CheckResult, snapshot *domain.MonitorQuotaSn
 
 // persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。
 // 任一写库失败都只记日志，不影响调用方拿到 results（与 MVP 期望一致：宁可漏记历史也要先返回结果）。
-func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *ChannelMonitor, results []*CheckResult) {
-	mode := s.probeRuntime(ctx).Mode
+func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, mode string, m *ChannelMonitor, results []*CheckResult) {
+	writeCtx, cancel := historyWriteContext(ctx, mode)
+	defer cancel()
+	ctx = writeCtx
 	rows := make([]*ChannelMonitorHistoryRow, 0, len(results))
 	for _, r := range results {
 		rows = append(rows, &ChannelMonitorHistoryRow{

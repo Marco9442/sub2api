@@ -326,13 +326,52 @@ func extractProviderProbeText(provider, apiMode string, body []byte) string {
 	return extractMonitorResponseText(adapter, body)
 }
 
+var errMonitorStreamLimit = errors.New("monitor stream exceeded size limit")
+
+// monitorStreamLimit 允许再读 1 字节，用来区分正常结束和超过上限。
+type monitorStreamLimit struct {
+	r     io.Reader
+	total int
+	max   int
+}
+
+func newMonitorStreamLimit(r io.Reader, max int) io.Reader {
+	return &monitorStreamLimit{r: r, max: max}
+}
+
+func (m *monitorStreamLimit) Read(p []byte) (int, error) {
+	if m.total > m.max {
+		return 0, errMonitorStreamLimit
+	}
+	room := m.max + 1 - m.total
+	if room <= 0 {
+		return 0, errMonitorStreamLimit
+	}
+	if len(p) > room {
+		p = p[:room]
+	}
+	n, err := m.r.Read(p)
+	m.total += n
+	if m.total > m.max {
+		return n, errMonitorStreamLimit
+	}
+	return n, err
+}
+
 func consumeMonitorSSE(r io.Reader, protocol monitorStreamProtocol, start time.Time) (time.Duration, string, bool, bool, string) {
-	reader := bufio.NewReader(io.LimitReader(r, monitorResponseMaxBytes))
+	reader := bufio.NewReader(newMonitorStreamLimit(r, monitorResponseMaxBytes))
 	var b strings.Builder
 	var measured time.Duration
 	sawText := false
 	for {
 		event, data, err := readSSEEvent(reader)
+		// 传输截断和读取上限都不是正常结束。先于 done 判断，避免把残缺流记成成功。
+		switch {
+		case errors.Is(err, errMonitorStreamLimit):
+			return measured, b.String(), false, true, "stream exceeded size limit"
+		case errors.Is(err, io.ErrUnexpectedEOF):
+			return measured, b.String(), false, true, "upstream stream truncated"
+		}
 		if data != "" || event != "" {
 			if protocol.fail != nil && protocol.fail(event, data) {
 				return measured, b.String(), false, true, "upstream stream error"
@@ -342,14 +381,14 @@ func consumeMonitorSSE(r io.Reader, protocol monitorStreamProtocol, start time.T
 					sawText = true
 					measured = time.Since(start)
 				}
-				b.WriteString(piece)
+				_, _ = b.WriteString(piece)
 			}
 			if protocol.done != nil && protocol.done(event, data) {
 				return measured, b.String(), sawText, false, ""
 			}
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			if errors.Is(err, io.EOF) {
 				return measured, b.String(), sawText, false, ""
 			}
 			return measured, b.String(), false, false, err.Error()
@@ -363,6 +402,13 @@ func readSSEEvent(r *bufio.Reader) (string, string, error) {
 	for {
 		line, err := r.ReadString('\n')
 		if len(line) > 0 {
+			// 没有换行就结束的一行是截断帧，不能当成完整事件。
+			if !strings.HasSuffix(line, "\n") && err != nil {
+				if errors.Is(err, errMonitorStreamLimit) {
+					return "", "", err
+				}
+				return "", "", io.ErrUnexpectedEOF
+			}
 			line = strings.TrimRight(line, "\r\n")
 			if line == "" {
 				if eventName != "" || len(data) > 0 {
@@ -387,7 +433,11 @@ func readSSEEvent(r *bufio.Reader) (string, string, error) {
 		}
 		if err != nil {
 			if eventName != "" || len(data) > 0 {
-				return eventName, strings.Join(data, "\n"), nil
+				// 干净的 EOF 仍交出已读完的事件。传输截断和读取上限必须继续向上传递。
+				if errors.Is(err, io.EOF) {
+					return eventName, strings.Join(data, "\n"), nil
+				}
+				return eventName, strings.Join(data, "\n"), err
 			}
 			return "", "", err
 		}

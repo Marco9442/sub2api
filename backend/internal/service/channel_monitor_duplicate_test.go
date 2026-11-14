@@ -185,6 +185,146 @@ func TestDuplicateChannelMonitorNamePreservesSuffixWithinSchemaLimit(t *testing.
 	require.True(t, strings.HasSuffix(name, " (Copy)"))
 }
 
+type customOverrideRepoStub struct {
+	duplicateChannelMonitorRepoStub
+	overrides map[int64]*ChannelMonitorCustomOverride
+	upserts   []int64
+}
+
+func (r *customOverrideRepoStub) GetCustomOverride(_ context.Context, id int64) (*ChannelMonitorCustomOverride, error) {
+	if r.overrides == nil {
+		return nil, nil
+	}
+	return r.overrides[id], nil
+}
+
+func (r *customOverrideRepoStub) ListCustomOverrides(context.Context, []int64) (map[int64]*ChannelMonitorCustomOverride, error) {
+	return map[int64]*ChannelMonitorCustomOverride{}, nil
+}
+
+func (r *customOverrideRepoStub) UpsertCustomOverride(_ context.Context, id int64, ov *ChannelMonitorCustomOverride) error {
+	if r.overrides == nil {
+		r.overrides = map[int64]*ChannelMonitorCustomOverride{}
+	}
+	r.overrides[id] = ov
+	r.upserts = append(r.upserts, id)
+	return nil
+}
+
+func (r *customOverrideRepoStub) DeleteCustomOverride(context.Context, int64) error { return nil }
+
+func (r *customOverrideRepoStub) ShortestActualInterval(context.Context) (int, bool, error) {
+	return 0, false, nil
+}
+
+func TestDuplicateChannelMonitorCopiesCustomOverride(t *testing.T) {
+	enabled := true
+	minMs, maxMs := 10, 100
+	source := &ChannelMonitor{
+		ID:              42,
+		Name:            "primary",
+		Provider:        MonitorProviderOpenAI,
+		Endpoint:        "https://api.example.com",
+		APIKey:          "OLD:top-secret",
+		PrimaryModel:    "gpt-5.4-mini",
+		IntervalSeconds: 90,
+		Enabled:         true,
+	}
+	repo := &customOverrideRepoStub{duplicateChannelMonitorRepoStub: duplicateChannelMonitorRepoStub{source: source}}
+	repo.overrides = map[int64]*ChannelMonitorCustomOverride{
+		source.ID: {TTFTAdjustEnabled: &enabled, TTFTMinMs: &minMs, TTFTMaxMs: &maxMs},
+	}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+
+	duplicate, err := svc.Duplicate(context.Background(), source.ID, 77, "admin:77", "copy-override")
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{duplicate.ID}, repo.upserts)
+	require.Equal(t, repo.overrides[source.ID], duplicate.CustomOverride)
+}
+
+type createGuardRepo struct {
+	ChannelMonitorRepository
+	creates int
+}
+
+func (r *createGuardRepo) Create(context.Context, *ChannelMonitor) error {
+	r.creates++
+	return nil
+}
+
+func TestCreateRejectsInvalidCustomOverrideBeforeWrite(t *testing.T) {
+	enabled := true
+	minMs, maxMs := 20, 10
+	repo := &createGuardRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+
+	created, err := svc.Create(context.Background(), ChannelMonitorCreateParams{
+		Name:            "probe",
+		Provider:        MonitorProviderOpenAI,
+		Endpoint:        "http://127.0.0.1:8080",
+		APIKey:          "secret",
+		PrimaryModel:    "gpt-5.4-mini",
+		IntervalSeconds: 60,
+		CustomOverride:  &ChannelMonitorCustomOverride{TTFTAdjustEnabled: &enabled, TTFTMinMs: &minMs, TTFTMaxMs: &maxMs},
+	})
+
+	require.Nil(t, created)
+	require.ErrorIs(t, err, ErrChannelMonitorInvalidTTFT)
+	require.Zero(t, repo.creates)
+}
+
+type overrideCatalogSettings struct {
+	saved bool
+}
+
+func (s *overrideCatalogSettings) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
+	return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}
+}
+
+func (s *overrideCatalogSettings) GetChannelMonitorCustom(context.Context) (ChannelMonitorCustomConfig, bool) {
+	cfg := defaultChannelMonitorCustomConfig()
+	cfg.TTFTAdjustEnabled = true
+	cfg.TTFTMinMs = 100
+	cfg.TTFTMaxMs = 1000
+	return cfg, true
+}
+
+func (s *overrideCatalogSettings) SaveChannelMonitorMode(context.Context, string, ChannelMonitorCustomConfig) error {
+	s.saved = true
+	return nil
+}
+
+type overrideCatalogRepo struct {
+	ChannelMonitorRepository
+	items []*ChannelMonitorCustomOverride
+}
+
+func (r *overrideCatalogRepo) ListAllCustomOverrides(context.Context) ([]*ChannelMonitorCustomOverride, error) {
+	return r.items, nil
+}
+
+func (r *overrideCatalogRepo) ShortestActualInterval(context.Context) (int, bool, error) {
+	return 0, false, nil
+}
+
+func TestSaveMonitorModeRejectsBrokenExistingOverride(t *testing.T) {
+	maxMs := 50
+	repo := &overrideCatalogRepo{items: []*ChannelMonitorCustomOverride{{TTFTMaxMs: &maxMs}}}
+	settings := &overrideCatalogSettings{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	cfg := defaultChannelMonitorCustomConfig()
+	cfg.TTFTAdjustEnabled = true
+	cfg.TTFTMinMs = 100
+	cfg.TTFTMaxMs = 1000
+	err := svc.SaveMonitorMode(context.Background(), ChannelMonitorModeCustom, cfg)
+
+	require.ErrorIs(t, err, ErrChannelMonitorInvalidTTFT)
+	require.False(t, settings.saved)
+}
+
 func TestDuplicateChannelMonitorRejectsUndecryptableAPIKey(t *testing.T) {
 	source := &ChannelMonitor{ID: 42, Name: "broken", APIKey: "OLD:broken"}
 	repo := &duplicateChannelMonitorRepoStub{source: source}

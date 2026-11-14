@@ -30,8 +30,8 @@ func executableSQL(content string) string {
 		if i := strings.Index(line, "--"); i >= 0 {
 			line = line[:i]
 		}
-		b.WriteString(line)
-		b.WriteByte('\n')
+		_, _ = b.WriteString(line)
+		_ = b.WriteByte('\n')
 	}
 	return b.String()
 }
