@@ -7189,9 +7189,11 @@
                 </div>
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{
-                    form.channel_monitor_mode === 'v1'
-                      ? t('admin.settings.features.channelMonitor.modeV1Hint')
-                      : t('admin.settings.features.channelMonitor.modeV2Hint')
+                    form.channel_monitor_mode === 'custom'
+                      ? t('channelMonitorCustom.settingsNote')
+                      : form.channel_monitor_mode === 'v1'
+                        ? t('admin.settings.features.channelMonitor.modeV1Hint')
+                        : t('admin.settings.features.channelMonitor.modeV2Hint')
                   }}
                 </p>
                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
@@ -7199,7 +7201,7 @@
                 </p>
               </div>
 
-              <div v-if="form.channel_monitor_mode === 'v1'">
+              <div v-if="form.channel_monitor_mode === 'v1' || form.channel_monitor_mode === 'custom'">
                 <label class="input-label">
                   {{ t('admin.settings.features.channelMonitor.defaultInterval') }}
                   <span class="text-red-500">*</span>
@@ -7241,7 +7243,7 @@
                 </div>
               </div>
 
-              <div v-if="form.channel_monitor_mode === 'v1'" class="flex items-start justify-between gap-4">
+              <div v-if="form.channel_monitor_mode === 'v1' || form.channel_monitor_mode === 'custom'" class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
                   <p class="text-sm font-medium text-gray-900 dark:text-white">
                     {{ t('admin.settings.features.channelMonitor.showQuota') }}
@@ -10016,7 +10018,7 @@ const form = reactive<SettingsForm>({
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
-  channel_monitor_mode: 'v1' as 'v1' | 'v2',
+  channel_monitor_mode: 'v1' as 'v1' | 'v2' | 'custom',
   channel_monitor_default_interval_seconds: 60,
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
@@ -11047,7 +11049,9 @@ async function loadSettings() {
     form.login_agreement_mode =
       settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
     form.channel_monitor_mode =
-      settings.channel_monitor_mode === "v2" ? "v2" : "v1";
+      settings.channel_monitor_mode === "v2" || settings.channel_monitor_mode === "custom"
+        ? settings.channel_monitor_mode
+        : "v1";
     form.channel_monitor_hide_throughput = Boolean(
       settings.channel_monitor_hide_throughput
     );
@@ -11750,7 +11754,7 @@ async function saveSettings() {
       ).filter((e) => e.email.trim() !== ""),
       // Channel Monitor feature switch
       channel_monitor_enabled: form.channel_monitor_enabled,
-      channel_monitor_mode: form.channel_monitor_mode === 'v1' ? 'v1' : 'v2',
+      channel_monitor_mode: form.channel_monitor_mode,
       channel_monitor_default_interval_seconds:
         Number(form.channel_monitor_default_interval_seconds) || 60,
       channel_monitor_hide_throughput: Boolean(form.channel_monitor_hide_throughput),

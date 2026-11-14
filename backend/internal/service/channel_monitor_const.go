@@ -217,4 +217,24 @@ var (
 		"CHANNEL_MONITOR_MODE_MISMATCH",
 		"channel monitor mode does not allow this operation",
 	)
+	ErrChannelMonitorInvalidThreshold = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_THRESHOLD",
+		"yellow_seconds and red_seconds must satisfy 0 < yellow < red, and red must not exceed the shortest actual detection interval",
+	)
+	ErrChannelMonitorIntervalBelowRed = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INTERVAL_BELOW_RED",
+		"interval_seconds - jitter_seconds must be greater than or equal to the red threshold",
+	)
+	ErrChannelMonitorInvalidPrompt = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_PROMPT",
+		"custom detection prompt must be 1-500 characters",
+	)
+	ErrChannelMonitorInvalidTTFT = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_TTFT",
+		"ttft adjustment requires multiplier > 0 and 0 <= min_ms < max_ms",
+	)
+	ErrChannelMonitorInvalidTPS = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_TPS",
+		"token/s range requires 0 <= min < max",
+	)
 )

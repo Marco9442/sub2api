@@ -38,6 +38,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MonitorTimelinePoint } from '@/api/channelMonitor'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { timelineMetricSuffix } from '@/utils/channelMonitorMetric'
 
 const props = withDefaults(defineProps<{
   buckets?: MonitorTimelinePoint[]
@@ -100,13 +101,12 @@ const displayBars = computed<Bar[]>(() => {
     const status = point.status as keyof typeof STATUS_HEIGHT
     const colorClass = STATUS_COLOR[status] ?? STATUS_COLOR.empty
     const heightPct = STATUS_HEIGHT[status] ?? STATUS_HEIGHT.empty
-    const latency = formatLatency(point.latency_ms)
     const relative = formatRelativeTime(point.checked_at)
     const label = statusLabel(point.status)
     bars.push({
       colorClass,
       heightPct,
-      title: `${relative} · ${label} · ${latency}ms`,
+      title: `${relative} · ${label}${timelineMetricSuffix(point, formatLatency)}`,
     })
   }
 

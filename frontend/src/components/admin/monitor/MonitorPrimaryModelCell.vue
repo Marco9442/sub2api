@@ -34,7 +34,7 @@
               <tr class="text-gray-400">
                 <th class="py-0.5 pr-2 font-medium">{{ t('admin.channelMonitor.columns.primaryModel') }}</th>
                 <th class="py-0.5 pr-2 font-medium">{{ t('admin.channelMonitor.columns.actions') }}</th>
-                <th class="py-0.5 font-medium">{{ t('admin.channelMonitor.columns.latency') }}</th>
+                <th class="py-0.5 font-medium">{{ row.primary_metric_kind === 'ttft' ? t('channelMonitorCustom.ttft') : t('admin.channelMonitor.columns.latency') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -48,7 +48,10 @@
                     {{ statusLabel(m.status) }}
                   </span>
                 </td>
-                <td class="py-0.5 text-gray-100">{{ formatLatency(m.latency_ms) }}</td>
+                <td class="py-0.5 text-gray-100">
+                  {{ formatLatency(m.latency_ms) }}
+                  <span v-if="m.metric_kind === 'ttft' && m.tokens_per_sec != null"> · {{ m.tokens_per_sec.toFixed(3) }}</span>
+                </td>
               </tr>
             </tbody>
           </table>

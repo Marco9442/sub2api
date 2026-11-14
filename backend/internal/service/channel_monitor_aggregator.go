@@ -31,7 +31,7 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 		slog.Warn("channel_monitor: batch load latest failed", "error", err)
 		latestMap = map[int64][]*ChannelMonitorLatest{}
 	}
-	availMap, err := s.repo.ComputeAvailabilityForMonitors(ctx, ids, monitorAvailability7Days)
+	availMap, err := s.availabilityForMonitors(ctx, ids, monitorAvailability7Days)
 	if err != nil {
 		slog.Warn("channel_monitor: batch compute availability failed", "error", err)
 		availMap = map[int64][]*ChannelMonitorAvailability{}
@@ -162,7 +162,7 @@ func (s *ChannelMonitorService) collectAvailabilityWindows(ctx context.Context, 
 	out := make(map[int]map[string]*ChannelMonitorAvailability, 3)
 	windows := []int{monitorAvailability7Days, monitorAvailability15Days, monitorAvailability30Days}
 	for _, w := range windows {
-		rows, err := s.repo.ComputeAvailability(ctx, monitorID, w)
+		rows, err := s.availabilityForMonitor(ctx, monitorID, w)
 		if err != nil {
 			return nil, fmt.Errorf("compute availability %dd: %w", w, err)
 		}
@@ -203,7 +203,8 @@ func buildStatusSummary(
 	if primary != "" {
 		if l, ok := latestByModel[primary]; ok {
 			summary.PrimaryStatus = l.Status
-			summary.PrimaryLatencyMs = l.LatencyMs
+			summary.PrimaryLatencyMs, summary.PrimaryTokensPerSec = redactDisplayedMetrics(l.MetricKind, l.Status, l.LatencyMs, l.TokensPerSec)
+			summary.PrimaryMetricKind = l.MetricKind
 			// 配额快照只挂主模型行（quota 模式唯一行 / quota_probe 的主行）。
 			summary.LatestQuota = l.Quota
 		}
@@ -215,7 +216,8 @@ func buildStatusSummary(
 		entry := ExtraModelStatus{Model: model}
 		if l, ok := latestByModel[model]; ok {
 			entry.Status = l.Status
-			entry.LatencyMs = l.LatencyMs
+			entry.LatencyMs, entry.TokensPerSec = redactDisplayedMetrics(l.MetricKind, l.Status, l.LatencyMs, l.TokensPerSec)
+			entry.MetricKind = l.MetricKind
 		}
 		summary.ExtraModels = append(summary.ExtraModels, entry)
 	}
@@ -231,16 +233,18 @@ func buildUserViewFromSummary(
 	timelineEntries []*ChannelMonitorHistoryEntry,
 ) *UserMonitorView {
 	view := &UserMonitorView{
-		ID:               m.ID,
-		Name:             m.Name,
-		Provider:         m.Provider,
-		GroupName:        m.GroupName,
-		PrimaryModel:     m.PrimaryModel,
-		PrimaryStatus:    summary.PrimaryStatus,
-		PrimaryLatencyMs: summary.PrimaryLatencyMs,
-		Availability7d:   summary.Availability7d,
-		ExtraModels:      summary.ExtraModels,
-		Timeline:         buildTimelinePoints(timelineEntries),
+		ID:                  m.ID,
+		Name:                m.Name,
+		Provider:            m.Provider,
+		GroupName:           m.GroupName,
+		PrimaryModel:        m.PrimaryModel,
+		PrimaryStatus:       summary.PrimaryStatus,
+		PrimaryLatencyMs:    summary.PrimaryLatencyMs,
+		PrimaryTokensPerSec: summary.PrimaryTokensPerSec,
+		PrimaryMetricKind:   summary.PrimaryMetricKind,
+		Availability7d:      summary.Availability7d,
+		ExtraModels:         summary.ExtraModels,
+		Timeline:            buildTimelinePoints(timelineEntries),
 	}
 	if primaryLatest != nil {
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs
@@ -253,9 +257,12 @@ func buildUserViewFromSummary(
 func buildTimelinePoints(entries []*ChannelMonitorHistoryEntry) []UserMonitorTimelinePoint {
 	out := make([]UserMonitorTimelinePoint, 0, len(entries))
 	for _, e := range entries {
+		latency, tokens := redactDisplayedMetrics(e.MetricKind, e.Status, e.LatencyMs, e.TokensPerSec)
 		out = append(out, UserMonitorTimelinePoint{
 			Status:        e.Status,
-			LatencyMs:     e.LatencyMs,
+			LatencyMs:     latency,
+			TokensPerSec:  tokens,
+			MetricKind:    e.MetricKind,
 			PingLatencyMs: e.PingLatencyMs,
 			CheckedAt:     e.CheckedAt,
 		})
@@ -277,7 +284,8 @@ func mergeModelDetails(
 		d := ModelDetail{Model: model}
 		if l, ok := latestByModel[model]; ok {
 			d.LatestStatus = l.Status
-			d.LatestLatencyMs = l.LatencyMs
+			d.LatestLatencyMs, d.LatestTokensPerSec = redactDisplayedMetrics(l.MetricKind, l.Status, l.LatencyMs, l.TokensPerSec)
+			d.MetricKind = l.MetricKind
 		}
 		if a, ok := availMap[monitorAvailability7Days][model]; ok {
 			d.Availability7d = a.AvailabilityPct
