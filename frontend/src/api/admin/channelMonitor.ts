@@ -87,6 +87,9 @@ export interface ChannelMonitor {
   primary_status: MonitorStatus | ''
   /** Latest latency of the primary model in ms (null when no history yet) */
   primary_latency_ms: number | null
+  primary_tokens_per_sec?: number | null
+  primary_metric_kind?: string
+  custom_override?: ChannelMonitorCustomOverride | null
   /** Primary model 7-day availability percentage (0-100) */
   availability_7d: number
   /** Latest status per extra model (used for hover tooltip) */
@@ -108,6 +111,8 @@ export interface ExtraModelStatus {
   model: string
   status: MonitorStatus | ''
   latency_ms: number | null
+  tokens_per_sec?: number | null
+  metric_kind?: string
 }
 
 export interface ListParams {
@@ -150,6 +155,7 @@ export interface CreateParams {
   extra_headers?: Record<string, string>
   body_override_mode?: BodyOverrideMode
   body_override?: Record<string, unknown> | null
+  custom_override?: ChannelMonitorCustomOverride | null
 }
 
 // Update request: api_key 空串 = 不修改；clear_template=true 时把 template_id 置空；
@@ -158,10 +164,42 @@ export type UpdateParams = Partial<CreateParams> & {
   clear_template?: boolean
 }
 
+export interface ChannelMonitorCustomConfig {
+  prompt: string
+  yellow_seconds: number
+  red_seconds: number
+  ttft_adjust_enabled: boolean
+  ttft_multiplier: number
+  ttft_min_ms: number
+  ttft_max_ms: number
+  tps_enabled: boolean
+  tps_min: number
+  tps_max: number
+}
+
+export interface ChannelMonitorCustomOverride {
+  ttft_adjust_enabled?: boolean | null
+  ttft_multiplier?: number | null
+  ttft_min_ms?: number | null
+  ttft_max_ms?: number | null
+  tps_enabled?: boolean | null
+  tps_min?: number | null
+  tps_max?: number | null
+}
+
+export interface ChannelMonitorModeResponse {
+  mode: 'v1' | 'v2' | 'custom'
+  enabled: boolean
+  thresholds_persisted: boolean
+  custom: ChannelMonitorCustomConfig
+}
+
 export interface CheckResult {
   model: string
   status: MonitorStatus
   latency_ms: number | null
+  tokens_per_sec?: number | null
+  metric_kind?: string
   ping_latency_ms: number | null
   message: string
   checked_at: string
@@ -178,6 +216,8 @@ export interface HistoryItem {
   model: string
   status: MonitorStatus
   latency_ms: number | null
+  tokens_per_sec?: number | null
+  metric_kind?: string
   ping_latency_ms: number | null
   message: string
   checked_at: string
@@ -334,6 +374,22 @@ export async function runNow(id: number): Promise<RunNowResponse> {
 /**
  * List historical check results for a monitor.
  */
+export async function getMode(): Promise<ChannelMonitorModeResponse> {
+  const { data } = await apiClient.get<ChannelMonitorModeResponse>('/admin/channel-monitors/mode')
+  return data
+}
+
+export async function updateMode(
+  mode: ChannelMonitorModeResponse['mode'],
+  custom: ChannelMonitorCustomConfig,
+): Promise<ChannelMonitorModeResponse> {
+  const { data } = await apiClient.put<ChannelMonitorModeResponse>('/admin/channel-monitors/mode', {
+    mode,
+    custom,
+  })
+  return data
+}
+
 export async function listHistory(
   id: number,
   params: HistoryParams = {}
@@ -353,6 +409,8 @@ export const channelMonitorAPI = {
   update,
   del,
   runNow,
+  getMode,
+  updateMode,
   listHistory,
 }
 

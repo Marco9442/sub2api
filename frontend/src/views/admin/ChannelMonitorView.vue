@@ -12,9 +12,11 @@
         </h1>
         <p class="page-description mt-1.5 text-xs text-gray-500 dark:text-gray-400">
           {{
-            isV1Mode
-              ? t('channelMonitorV2.admin.descriptionV1')
-              : t('channelMonitorV2.admin.descriptionV2')
+            savedMode === 'custom'
+              ? t('channelMonitorCustom.savedHint')
+              : savedMode === 'v1'
+                ? t('channelMonitorV2.admin.descriptionV1')
+                : t('channelMonitorV2.admin.descriptionV2')
           }}
         </p>
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -29,7 +31,7 @@
               class="tab flex-1 sm:flex-none"
               :class="adminMonitorTab === 'v2' ? 'tab-active' : ''"
               :aria-selected="adminMonitorTab === 'v2'"
-              @click="adminMonitorTab = 'v2'"
+              @click="previewMode = 'v2'"
             >
               {{ t('channelMonitorV2.admin.tabV2') }}
             </button>
@@ -39,13 +41,15 @@
               class="tab flex-1 sm:flex-none"
               :class="adminMonitorTab === 'legacy' ? 'tab-active' : ''"
               :aria-selected="adminMonitorTab === 'legacy'"
-              @click="adminMonitorTab = 'legacy'"
+              @click="previewMode = previewMode === 'custom' || savedMode === 'custom' ? 'custom' : 'v1'"
             >
-              {{ isV1Mode ? t('channelMonitorV2.admin.tabV1Active') : t('channelMonitorV2.admin.tabV1History') }}
+              {{ savedMode === 'v2' && previewMode === 'v2' ? t('channelMonitorV2.admin.tabV1History') : t('channelMonitorV2.admin.tabV1Active') }}
             </button>
           </div>
         </div>
       </header>
+
+      <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
 
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 
@@ -93,7 +97,18 @@
           </template>
 
           <template #cell-latency="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatLatency(row.primary_latency_ms) }}</span>
+            <div class="text-sm text-gray-900 dark:text-gray-100">
+              <div>
+                <template v-if="row.primary_metric_kind === 'quota'">{{ t('channelMonitorCustom.quota') }}</template>
+                <template v-else-if="row.primary_metric_kind === 'ttft'">
+                  {{ row.primary_latency_ms == null ? t('channelMonitorCustom.hidden') : `${formatLatency(row.primary_latency_ms)} ms` }}
+                </template>
+                <template v-else>{{ formatLatency(row.primary_latency_ms) }}</template>
+              </div>
+              <div v-if="tokenRateDisplay(row.primary_metric_kind, row.primary_latency_ms, row.primary_tokens_per_sec) !== 'omit'" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ tokenRateDisplay(row.primary_metric_kind, row.primary_latency_ms, row.primary_tokens_per_sec) === 'hidden' ? t('channelMonitorCustom.hidden') : `${row.primary_tokens_per_sec?.toFixed(3)} token/s` }}
+              </div>
+            </div>
           </template>
 
           <template #cell-enabled="{ row }">
@@ -139,6 +154,7 @@
     <MonitorFormDialog
       :show="showDialog"
       :monitor="editing"
+      :allow-custom-override="previewMode === 'custom'"
       @close="closeDialog"
       @saved="reload"
     />
@@ -199,12 +215,20 @@ import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vu
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
-import { isChannelMonitorV1Mode } from '@/utils/featureFlags'
+import { getChannelMonitorMode } from '@/utils/featureFlags'
+import { isActiveChannelMonitorMode, type ChannelMonitorMode } from '@/utils/channelMonitorMode'
+import { tokenRateDisplay } from '@/utils/channelMonitorMetric'
+import ChannelMonitorModePanel from '@/components/admin/monitor/ChannelMonitorModePanel.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const isV1Mode = computed(() => isChannelMonitorV1Mode())
-const adminMonitorTab = ref<'v2' | 'legacy'>(isChannelMonitorV1Mode() ? 'legacy' : 'v2')
+const previewMode = ref<ChannelMonitorMode>(getChannelMonitorMode())
+const savedMode = ref<ChannelMonitorMode>(previewMode.value)
+const adminMonitorTab = ref<'v2' | 'legacy'>(previewMode.value === 'v2' ? 'v2' : 'legacy')
+
+watch(previewMode, (mode) => {
+  adminMonitorTab.value = mode === 'v2' ? 'v2' : 'legacy'
+})
 const {
   providerLabel,
   providerBadgeClass,
@@ -239,7 +263,7 @@ const columns = computed<Column[]>(() => [
   { key: 'provider', label: t('admin.channelMonitor.columns.provider'), sortable: false },
   { key: 'primary_model', label: t('admin.channelMonitor.columns.primaryModel'), sortable: false },
   { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
-  { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
+  { key: 'latency', label: savedMode.value === 'custom' ? t('channelMonitorCustom.ttft') : t('admin.channelMonitor.columns.latency'), sortable: false },
   { key: 'enabled', label: t('admin.channelMonitor.columns.enabled'), sortable: false },
   { key: 'actions', label: t('admin.channelMonitor.columns.actions'), sortable: false },
 ])
@@ -325,7 +349,7 @@ async function toggleEnabled(row: ChannelMonitor) {
 }
 
 async function handleRunNow(row: ChannelMonitor) {
-  if (!isV1Mode.value) {
+  if (!isActiveChannelMonitorMode(savedMode.value)) {
     appStore.showError(t('admin.channelMonitor.runFailed'))
     return
   }
@@ -384,6 +408,9 @@ async function confirmDelete() {
 
 watch(adminMonitorTab, (tab) => {
   if (tab === 'legacy' && monitors.value.length === 0) void reload()
+})
+watch(savedMode, () => {
+  void reload()
 })
 onMounted(() => {
   if (adminMonitorTab.value === 'legacy') void reload()

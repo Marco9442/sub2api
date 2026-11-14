@@ -488,12 +488,25 @@ const (
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
 
 	// SettingKeyChannelMonitorMode selects exclusive implementation:
-	// "v1" active probes, "v2" passive aggregation. Default "v1" (opt-in to v2).
+	// "v1" active probes, "v2" passive aggregation, "custom" active TTFT probes.
+	// Default "v1".
 	SettingKeyChannelMonitorMode = "channel_monitor_mode"
 
-	// ChannelMonitorModeV1/V2 are the only accepted mode values.
-	ChannelMonitorModeV1 = "v1"
-	ChannelMonitorModeV2 = "v2"
+	// ChannelMonitorModeV1/V2/Custom are the accepted mode values.
+	ChannelMonitorModeV1     = "v1"
+	ChannelMonitorModeV2     = "v2"
+	ChannelMonitorModeCustom = "custom"
+
+	SettingKeyChannelMonitorCustomPrompt            = "channel_monitor_custom_prompt"
+	SettingKeyChannelMonitorCustomYellowSeconds     = "channel_monitor_custom_yellow_seconds"
+	SettingKeyChannelMonitorCustomRedSeconds        = "channel_monitor_custom_red_seconds"
+	SettingKeyChannelMonitorCustomTTFTAdjustEnabled = "channel_monitor_custom_ttft_adjust_enabled"
+	SettingKeyChannelMonitorCustomTTFTMultiplier    = "channel_monitor_custom_ttft_multiplier"
+	SettingKeyChannelMonitorCustomTTFTMinMs         = "channel_monitor_custom_ttft_min_ms"
+	SettingKeyChannelMonitorCustomTTFTMaxMs         = "channel_monitor_custom_ttft_max_ms"
+	SettingKeyChannelMonitorCustomTPSEnabled        = "channel_monitor_custom_tps_enabled"
+	SettingKeyChannelMonitorCustomTPSMin            = "channel_monitor_custom_tps_min"
+	SettingKeyChannelMonitorCustomTPSMax            = "channel_monitor_custom_tps_max"
 
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].

@@ -17,11 +17,12 @@
           <tr class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
             <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.model') }}</th>
             <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.latestStatus') }}</th>
-            <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.latestLatency') }}</th>
+            <th class="py-2 pr-3">{{ metric === 'ttft' ? t('channelMonitorCustom.ttft') : t('channelStatus.detailColumns.latestLatency') }}</th>
+            <th v-if="metric === 'ttft'" class="py-2 pr-3">{{ t('channelMonitorCustom.tokensPerSec') }}</th>
             <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.availability7d') }}</th>
             <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.availability15d') }}</th>
             <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.availability30d') }}</th>
-            <th class="py-2 pr-3">{{ t('channelStatus.detailColumns.avgLatency7d') }}</th>
+            <th class="py-2 pr-3">{{ metric === 'ttft' ? t('channelMonitorCustom.avgTtft7d') : t('channelStatus.detailColumns.avgLatency7d') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -39,7 +40,17 @@
                 {{ statusLabel(m.latest_status) }}
               </span>
             </td>
-            <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatLatency(m.latest_latency_ms) }}</td>
+            <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">
+              <template v-if="rowKind(m) === 'quota'">{{ t('channelMonitorCustom.quota') }}</template>
+              <template v-else-if="rowKind(m) === 'ttft'">
+                {{ metric === 'ttft' ? '' : `${t('channelMonitorCustom.ttft')} ` }}{{ m.latest_latency_ms == null ? t('channelMonitorCustom.hidden') : `${formatLatency(m.latest_latency_ms)} ms` }}
+              </template>
+              <template v-else>{{ formatLatency(m.latest_latency_ms) }} ms</template>
+            </td>
+            <td v-if="metric === 'ttft'" class="py-2 pr-3 text-gray-700 dark:text-gray-300">
+              <template v-if="tokenRate(m) === 'value'">{{ m.latest_tokens_per_sec?.toFixed(3) }}</template>
+              <template v-else-if="tokenRate(m) === 'hidden'">{{ t('channelMonitorCustom.hidden') }}</template>
+            </td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_7d) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_15d) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_30d) }}</td>
@@ -67,15 +78,18 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import {
   status as fetchChannelMonitorDetail,
   type UserMonitorDetail,
+  type UserMonitorModelDetail,
 } from '@/api/channelMonitor'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { resolveMonitorMetricKind, tokenRateDisplay } from '@/utils/channelMonitorMetric'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   show: boolean
   monitorId: number | null
   title: string
-}>()
+  metric?: 'latency' | 'ttft'
+}>(), { metric: 'latency' })
 
 defineEmits<{
   (e: 'close'): void
@@ -84,6 +98,14 @@ defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const { statusLabel, statusBadgeClass, formatLatency, formatPercent, formatMonitorModel } = useChannelMonitorFormat()
+
+function rowKind(row: UserMonitorModelDetail) {
+  return resolveMonitorMetricKind(row.metric_kind, props.metric)
+}
+
+function tokenRate(row: UserMonitorModelDetail) {
+  return tokenRateDisplay(rowKind(row), row.latest_latency_ms, row.latest_tokens_per_sec)
+}
 
 const detail = ref<UserMonitorDetail | null>(null)
 const loading = ref(false)

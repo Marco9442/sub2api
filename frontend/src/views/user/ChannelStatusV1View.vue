@@ -16,6 +16,7 @@
       :countdown-seconds="countdown"
       :loading="loading"
       :detail-cache="detailCache"
+      :metric="metric"
       @card-click="openDetail"
     />
 
@@ -23,6 +24,7 @@
       :show="showDetail"
       :monitor-id="detailTarget?.id ?? null"
       :title="detailTitle"
+      :metric="metric"
       @close="closeDetail"
     />
   </AppLayout>
@@ -48,6 +50,9 @@ import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
 import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+
+const props = withDefaults(defineProps<{ metric?: 'latency' | 'ttft' }>(), { metric: 'latency' })
+const metric = computed(() => props.metric)
 
 const { t } = useI18n()
 const appStore = useAppStore()

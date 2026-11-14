@@ -60,6 +60,8 @@ type channelMonitorCreateRequest struct {
 	CheckMode string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	// AccountID: 配额模式关联的账号 ID。
 	AccountID *int64 `json:"account_id"`
+	// CustomOverride 省略表示不写覆盖；空对象表示全部继承。
+	CustomOverride *channelMonitorCustomOverrideRequest `json:"custom_override"`
 }
 
 type channelMonitorUpdateRequest struct {
@@ -83,6 +85,8 @@ type channelMonitorUpdateRequest struct {
 	// CheckMode/AccountID：nil = 不更新；AccountID 指向 0 = 清空关联。
 	CheckMode *string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	AccountID *int64  `json:"account_id"`
+	// CustomOverride 省略表示保留原覆盖；空对象表示清除覆盖。
+	CustomOverride *channelMonitorCustomOverrideRequest `json:"custom_override"`
 }
 
 type channelMonitorResponse struct {
@@ -115,9 +119,12 @@ type channelMonitorResponse struct {
 
 	// 配额模式：check_mode + 关联账号 + 主模型最近配额快照
 	// （LatestQuota 由 List handler 批量聚合后填充；管理端不受 channel_monitor_show_quota 影响）。
-	CheckMode   string                       `json:"check_mode"`
-	AccountID   *int64                       `json:"account_id"`
-	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
+	CheckMode           string                                `json:"check_mode"`
+	AccountID           *int64                                `json:"account_id"`
+	LatestQuota         *domain.MonitorQuotaSnapshot          `json:"latest_quota,omitempty"`
+	CustomOverride      *service.ChannelMonitorCustomOverride `json:"custom_override,omitempty"`
+	PrimaryTokensPerSec *float64                              `json:"primary_tokens_per_sec,omitempty"`
+	PrimaryMetricKind   string                                `json:"primary_metric_kind,omitempty"`
 }
 
 type channelMonitorCheckResultResponse struct {
@@ -128,6 +135,8 @@ type channelMonitorCheckResultResponse struct {
 	Message       string                       `json:"message"`
 	CheckedAt     string                       `json:"checked_at"`
 	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
+	TokensPerSec  *float64                     `json:"tokens_per_sec,omitempty"`
+	MetricKind    string                       `json:"metric_kind,omitempty"`
 }
 
 type channelMonitorHistoryItemResponse struct {
@@ -139,6 +148,8 @@ type channelMonitorHistoryItemResponse struct {
 	Message       string                       `json:"message"`
 	CheckedAt     string                       `json:"checked_at"`
 	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
+	TokensPerSec  *float64                     `json:"tokens_per_sec,omitempty"`
+	MetricKind    string                       `json:"metric_kind,omitempty"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -184,6 +195,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		BodyOverride:        m.BodyOverride,
 		CheckMode:           m.CheckMode,
 		AccountID:           m.AccountID,
+		CustomOverride:      m.CustomOverride,
 		// PrimaryStatus / PrimaryLatencyMs / Availability7d / LatestQuota
 		// 由 List handler 在批量聚合后填充。
 	}
@@ -203,6 +215,8 @@ func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResp
 		Message:       r.Message,
 		CheckedAt:     r.CheckedAt.UTC().Format(time.RFC3339),
 		Quota:         r.Quota,
+		TokensPerSec:  r.TokensPerSec,
+		MetricKind:    r.MetricKind,
 	}
 }
 
@@ -216,6 +230,8 @@ func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonito
 		Message:       e.Message,
 		CheckedAt:     e.CheckedAt.UTC().Format(time.RFC3339),
 		Quota:         e.Quota,
+		TokensPerSec:  e.TokensPerSec,
+		MetricKind:    e.MetricKind,
 	}
 }
 
@@ -293,14 +309,18 @@ func buildListItemResponse(m *service.ChannelMonitor, summary service.MonitorSta
 	resp := channelMonitorToResponse(m)
 	resp.PrimaryStatus = summary.PrimaryStatus
 	resp.PrimaryLatencyMs = summary.PrimaryLatencyMs
+	resp.PrimaryTokensPerSec = summary.PrimaryTokensPerSec
+	resp.PrimaryMetricKind = summary.PrimaryMetricKind
 	resp.Availability7d = summary.Availability7d
 	resp.LatestQuota = summary.LatestQuota
 	resp.ExtraModelsStatus = make([]dto.ChannelMonitorExtraModelStatus, 0, len(summary.ExtraModels))
 	for _, e := range summary.ExtraModels {
 		resp.ExtraModelsStatus = append(resp.ExtraModelsStatus, dto.ChannelMonitorExtraModelStatus{
-			Model:     e.Model,
-			Status:    e.Status,
-			LatencyMs: e.LatencyMs,
+			Model:        e.Model,
+			Status:       e.Status,
+			LatencyMs:    e.LatencyMs,
+			TokensPerSec: e.TokensPerSec,
+			MetricKind:   e.MetricKind,
 		})
 	}
 	return resp
@@ -354,6 +374,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		CustomOverride:   customOverrideFromRequest(req.CustomOverride),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -450,6 +471,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		CustomOverride:   customOverrideFromRequest(req.CustomOverride),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

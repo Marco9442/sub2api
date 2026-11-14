@@ -116,6 +116,10 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	if err != nil {
 		return nil, err
 	}
+	// 只按字面主机和端口放行，不用 ip.Equal，避免 IPv4-mapped 地址被当成 127.0.0.1。
+	if isExactLoopbackExceptionDial(host, port) {
+		return monitorDialer.DialContext(ctx, network, address)
+	}
 	// 字面量 IP 走快速路径。
 	if ip := net.ParseIP(host); ip != nil {
 		if isPrivateIP(ip) {
