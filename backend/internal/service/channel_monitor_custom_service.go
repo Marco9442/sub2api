@@ -66,6 +66,12 @@ func (s *ChannelMonitorService) SaveMonitorMode(ctx context.Context, mode string
 	if err := s.rejectBrokenOverrides(ctx, cfg); err != nil {
 		return err
 	}
+	// 保存 Custom 前拦住存量非流式替换。不改写请求体，V1 仍可保存 stream:false。
+	if mode == ChannelMonitorModeCustom {
+		if err := s.rejectExistingNonStreamingReplace(ctx); err != nil {
+			return err
+		}
+	}
 	writer, ok := s.customSettings()
 	if !ok {
 		return fmt.Errorf("channel monitor settings writer is not configured")
@@ -207,6 +213,32 @@ type channelMonitorTxRunner interface {
 
 type channelMonitorOverrideCatalog interface {
 	ListAllCustomOverrides(ctx context.Context) ([]*ChannelMonitorCustomOverride, error)
+}
+
+type channelMonitorBodyCatalog interface {
+	ListReplaceBodies(ctx context.Context) ([]ChannelMonitorBodyRef, error)
+}
+
+func (s *ChannelMonitorService) rejectExistingNonStreamingReplace(ctx context.Context) error {
+	catalog, ok := s.repo.(channelMonitorBodyCatalog)
+	if !ok {
+		return nil
+	}
+	items, err := catalog.ListReplaceBodies(ctx)
+	if err != nil {
+		return err
+	}
+	labels := make([]string, 0)
+	for _, item := range items {
+		if rejectNonStreamingCustomReplace(item.BodyOverrideMode, item.BodyOverride) == nil {
+			continue
+		}
+		labels = append(labels, monitorStreamLabel(item.Name, item.ID))
+	}
+	if len(labels) == 0 {
+		return nil
+	}
+	return nonStreamingReplaceError(labels)
 }
 
 func (s *ChannelMonitorService) rejectBrokenOverrides(ctx context.Context, cfg ChannelMonitorCustomConfig) error {

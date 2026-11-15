@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -159,6 +160,38 @@ func (r *channelMonitorRepository) GetCustomOverride(ctx context.Context, id int
 		return nil, err
 	}
 	return found[id], nil
+}
+
+func (r *channelMonitorRepository) ListReplaceBodies(ctx context.Context) ([]service.ChannelMonitorBodyRef, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, body_override_mode, body_override
+		FROM channel_monitors
+		WHERE body_override_mode = $1
+		ORDER BY id
+	`, service.MonitorBodyOverrideModeReplace)
+	if err != nil {
+		return nil, fmt.Errorf("list channel monitor replace bodies: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]service.ChannelMonitorBodyRef, 0)
+	for rows.Next() {
+		var item service.ChannelMonitorBodyRef
+		var raw []byte
+		if err := rows.Scan(&item.ID, &item.Name, &item.BodyOverrideMode, &raw); err != nil {
+			return nil, fmt.Errorf("scan channel monitor replace body: %w", err)
+		}
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &item.BodyOverride); err != nil {
+				return nil, fmt.Errorf("decode channel monitor replace body: %w", err)
+			}
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate channel monitor replace bodies: %w", err)
+	}
+	return out, nil
 }
 
 func (r *channelMonitorRepository) ListAllCustomOverrides(ctx context.Context) ([]*service.ChannelMonitorCustomOverride, error) {

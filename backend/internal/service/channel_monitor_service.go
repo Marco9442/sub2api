@@ -462,11 +462,14 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	if err != nil {
 		return nil, err
 	}
+	wasEnabled := existing.Enabled
 	if err := applyMonitorUpdate(existing, p); err != nil {
 		return nil, err
 	}
-	if p.BodyOverride != nil || p.BodyOverrideMode != nil || p.Provider != nil || p.APIMode != nil {
-		if err := validateCustomStreamingProbe(s.probeRuntime(ctx).Mode, existing.BodyOverrideMode, existing.BodyOverride); err != nil {
+	bodyChanged := p.BodyOverride != nil || p.BodyOverrideMode != nil || p.Provider != nil || p.APIMode != nil
+	enabling := !wasEnabled && existing.Enabled
+	if bodyChanged || enabling {
+		if err := namedCustomStreamingProbe(s.probeRuntime(ctx).Mode, existing); err != nil {
 			return nil, err
 		}
 	}

@@ -3,10 +3,14 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const (
@@ -156,6 +160,43 @@ func rejectNonStreamingCustomReplace(bodyMode string, body map[string]any) error
 		return ErrChannelMonitorCustomStreamRequired
 	}
 	return nil
+}
+
+// ChannelMonitorBodyRef 只带非流式替换校验需要的字段，不含密钥。
+type ChannelMonitorBodyRef struct {
+	ID               int64
+	Name             string
+	BodyOverrideMode string
+	BodyOverride     map[string]any
+}
+
+func monitorStreamLabel(name string, id int64) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Sprintf("#%d", id)
+	}
+	return fmt.Sprintf("%s (#%d)", name, id)
+}
+
+func nonStreamingReplaceError(labels []string) error {
+	if len(labels) == 0 {
+		return ErrChannelMonitorCustomStreamRequired
+	}
+	return infraerrors.BadRequest(
+		"CHANNEL_MONITOR_CUSTOM_STREAM_REQUIRED",
+		customProbeRequiresStream+": "+strings.Join(labels, ", "),
+	)
+}
+
+func namedCustomStreamingProbe(runtimeMode string, m *ChannelMonitor) error {
+	if m == nil {
+		return nil
+	}
+	err := validateCustomStreamingProbe(runtimeMode, m.BodyOverrideMode, m.BodyOverride)
+	if errors.Is(err, ErrChannelMonitorCustomStreamRequired) {
+		return nonStreamingReplaceError([]string{monitorStreamLabel(m.Name, m.ID)})
+	}
+	return err
 }
 
 func validateCustomOverride(cfg ChannelMonitorCustomConfig, ov *ChannelMonitorCustomOverride) error {
