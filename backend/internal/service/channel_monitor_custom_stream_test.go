@@ -147,6 +147,40 @@ func TestCustomProbeMessage_LeavesShortTokenUntouched(t *testing.T) {
 	require.Equal(t, "upstream stream error", got)
 }
 
+func TestRunCustomCheck_ShortAPIKeyEchoIsNotStored(t *testing.T) {
+	orig := customMonitorHTTPClient
+	customMonitorHTTPClient = &http.Client{}
+	t.Cleanup(func() { customMonitorHTTPClient = orig })
+
+	secret := "q7"
+	marker := "echo-marker-zzz"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"bad `+secret+` `+marker+`"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	res := runCustomCheckForModel(t.Context(), customProbeInput{
+		MonitorID: 9,
+		Provider:  MonitorProviderOpenAI,
+		Endpoint:  server.URL,
+		APIKey:    secret,
+		Model:     "m",
+		Config:    defaultChannelMonitorCustomConfig(),
+	})
+	require.NotContains(t, res.Message, secret)
+	require.NotContains(t, res.Message, marker)
+	require.Contains(t, res.Message, "upstream HTTP 401")
+	require.Contains(t, res.Message, "upstream request failed")
+
+	repo := &historyCaptureRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.persistCheckResults(t.Context(), ChannelMonitorModeCustom, &ChannelMonitor{ID: 9, CheckMode: MonitorCheckModeProbe}, []*CheckResult{res})
+	require.Len(t, repo.rows, 1)
+	require.NotContains(t, repo.rows[0].Message, secret)
+	require.NotContains(t, repo.rows[0].Message, marker)
+}
+
 func TestRunCustomCheck_StreamTTFTAndHeaders(t *testing.T) {
 	orig := customMonitorHTTPClient
 	customMonitorHTTPClient = &http.Client{}

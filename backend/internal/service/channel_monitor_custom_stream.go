@@ -132,11 +132,7 @@ func runCustomCheckForModel(ctx context.Context, in customProbeInput) *CheckResu
 	}
 	if cause != "" && !completed {
 		res.Status = MonitorStatusError
-		if statusCode >= 400 {
-			res.Message = customDiagnostic(res.Status, int(measured/time.Millisecond), processed, fmt.Sprintf("upstream HTTP %d: %s", statusCode, cause))
-			return res
-		}
-		res.Message = customDiagnostic(res.Status, int(measured/time.Millisecond), processed, cause)
+		res.Message = customDiagnostic(res.Status, int(measured/time.Millisecond), processed, customFailureCause(in.APIKey, statusCode, cause))
 		return res
 	}
 	if !completed || strings.TrimSpace(text) == "" {
@@ -149,6 +145,41 @@ func runCustomCheckForModel(ctx context.Context, in customProbeInput) *CheckResu
 		res.Message = customDiagnostic(res.Status, int(measured/time.Millisecond), processed, "")
 	}
 	return res
+}
+
+// customFailureCause 在短 key 场景下去掉上游原文。短 key 不能整段替换，原文里只要出现它就会进历史。
+// 固定的检测说明仍然保留。
+func customFailureCause(apiKey string, statusCode int, cause string) string {
+	if shortMonitorAPIKey(apiKey) && untrustedProbeCause(cause) {
+		if statusCode >= 400 {
+			return fmt.Sprintf("upstream HTTP %d: upstream request failed", statusCode)
+		}
+		return "upstream request failed"
+	}
+	if statusCode >= 400 {
+		return fmt.Sprintf("upstream HTTP %d: %s", statusCode, cause)
+	}
+	return cause
+}
+
+func shortMonitorAPIKey(apiKey string) bool {
+	key := strings.TrimSpace(apiKey)
+	return key != "" && len(key) < 8
+}
+
+func untrustedProbeCause(cause string) bool {
+	switch strings.TrimSpace(cause) {
+	case "",
+		"upstream stream error",
+		"upstream stream truncated",
+		"stream exceeded size limit",
+		"detection deadline exceeded",
+		"custom probe returned no text",
+		"replace-mode: upstream returned 2xx with empty text":
+		return false
+	default:
+		return true
+	}
 }
 
 // customProbeMessage 先走监控模块已有的密钥模式，再替换本条配置的完整 API key。
