@@ -201,49 +201,16 @@
         </div>
       </details>
 
-      <details v-if="allowCustomOverride" class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
+      <details
+        v-if="allowCustomOverride"
+        :open="hasCustomOverride(editing?.custom_override)"
+        class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30"
+      >
         <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('channelMonitorCustom.overrideSection') }}
         </summary>
         <p class="mt-1 text-xs text-gray-400">{{ t('channelMonitorCustom.overrideHint') }}</p>
-        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.overrideTtft') }}
-            <select v-model="override.ttftEnabled" class="input mt-1">
-              <option value="">{{ t('channelMonitorCustom.overrideHint') }}</option>
-              <option value="true">{{ t('common.enabled') }}</option>
-              <option value="false">{{ t('common.disabled') }}</option>
-            </select>
-          </label>
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.ttftMultiplier') }}
-            <input v-model="override.multiplier" class="input mt-1" />
-          </label>
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.ttftMin') }}
-            <input v-model="override.min" class="input mt-1" />
-          </label>
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.ttftMax') }}
-            <input v-model="override.max" class="input mt-1" />
-          </label>
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.overrideTps') }}
-            <select v-model="override.tpsEnabled" class="input mt-1">
-              <option value="">{{ t('channelMonitorCustom.overrideHint') }}</option>
-              <option value="true">{{ t('common.enabled') }}</option>
-              <option value="false">{{ t('common.disabled') }}</option>
-            </select>
-          </label>
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.tpsMin') }}
-            <input v-model="override.tpsMin" class="input mt-1" />
-          </label>
-          <label class="text-xs text-gray-500">
-            {{ t('channelMonitorCustom.tpsMax') }}
-            <input v-model="override.tpsMax" class="input mt-1" />
-          </label>
-        </div>
+        <MonitorCustomOverrideFields v-model="customOverride" class="mt-4" />
       </details>
     </form>
 
@@ -288,6 +255,7 @@ import { userGroupsAPI } from '@/api/groups'
 import type {
   BodyOverrideMode,
   ChannelMonitor,
+  ChannelMonitorCustomOverride,
   CreateParams,
   APIMode,
   CheckMode,
@@ -303,6 +271,8 @@ import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
 import { getPlatformTextClass } from '@/components/admin/channel/types'
 import MonitorKeyPickerDialog from '@/components/admin/monitor/MonitorKeyPickerDialog.vue'
 import MonitorAdvancedRequestConfig from '@/components/admin/monitor/MonitorAdvancedRequestConfig.vue'
+import MonitorCustomOverrideFields from '@/components/admin/monitor/MonitorCustomOverrideFields.vue'
+import { hasCustomOverride } from '@/utils/channelMonitorCustom'
 import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
@@ -356,15 +326,7 @@ const systemDefaultInterval = computed<number>(() => {
 // editing is true when we have an existing monitor
 const editing = computed<ChannelMonitor | null>(() => props.monitor)
 const allowCustomOverride = computed(() => props.allowCustomOverride === true)
-const override = reactive({
-  ttftEnabled: '',
-  multiplier: '',
-  min: '',
-  max: '',
-  tpsEnabled: '',
-  tpsMin: '',
-  tpsMax: '',
-})
+const customOverride = ref<ChannelMonitorCustomOverride>({})
 
 const submitting = ref(false)
 
@@ -800,7 +762,7 @@ function resetForm() {
   form.extra_headers = {}
   form.body_override_mode = 'off'
   form.body_override = null
-  clearOverride()
+  customOverride.value = {}
   suppressFormWatchers = false
 }
 
@@ -823,42 +785,8 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.extra_headers = { ...(m.extra_headers || {}) }
   form.body_override_mode = m.body_override_mode || 'off'
   form.body_override = m.body_override ? { ...m.body_override } : null
-  loadOverride(m.custom_override)
+  customOverride.value = { ...m.custom_override }
   suppressFormWatchers = false
-}
-
-function clearOverride() {
-  override.ttftEnabled = ''
-  override.multiplier = ''
-  override.min = ''
-  override.max = ''
-  override.tpsEnabled = ''
-  override.tpsMin = ''
-  override.tpsMax = ''
-}
-
-function loadOverride(value: ChannelMonitor['custom_override']) {
-  clearOverride()
-  if (!value) return
-  if (value.ttft_adjust_enabled != null) override.ttftEnabled = value.ttft_adjust_enabled ? 'true' : 'false'
-  if (value.ttft_multiplier != null) override.multiplier = String(value.ttft_multiplier)
-  if (value.ttft_min_ms != null) override.min = String(value.ttft_min_ms)
-  if (value.ttft_max_ms != null) override.max = String(value.ttft_max_ms)
-  if (value.tps_enabled != null) override.tpsEnabled = value.tps_enabled ? 'true' : 'false'
-  if (value.tps_min != null) override.tpsMin = String(value.tps_min)
-  if (value.tps_max != null) override.tpsMax = String(value.tps_max)
-}
-
-function optionalBool(value: string): boolean | null {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  return null
-}
-
-function optionalNumber(value: string): number | null {
-  if (value.trim() === '') return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 // Re-sync form whenever the dialog is opened or the target monitor changes.
@@ -928,15 +856,7 @@ function buildPayload(): CreateParams {
     body_override: form.body_override,
     ...(allowCustomOverride.value
       ? {
-          custom_override: {
-            ttft_adjust_enabled: optionalBool(override.ttftEnabled),
-            ttft_multiplier: optionalNumber(override.multiplier),
-            ttft_min_ms: optionalNumber(override.min),
-            ttft_max_ms: optionalNumber(override.max),
-            tps_enabled: optionalBool(override.tpsEnabled),
-            tps_min: optionalNumber(override.tpsMin),
-            tps_max: optionalNumber(override.tpsMax),
-          },
+          custom_override: customOverride.value,
         }
       : {}),
   }
