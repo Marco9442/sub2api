@@ -5,31 +5,72 @@ package service
 import (
 	"context"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestCustomProbeContexts_DoNotInheritShortParentDeadline(t *testing.T) {
+func TestCustomModelContext_ManualCancelPropagates(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	model, stop := customModelContext(parent, 2*time.Second)
+	defer stop()
+	cancel()
+	require.ErrorIs(t, model.Err(), context.Canceled)
+}
+
+func TestScheduledCustomContext_OutlivesShortParent(t *testing.T) {
 	parent, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
 	defer cancel()
+	exec, stop := scheduledCustomContext(parent, 2*time.Second)
+	defer stop()
+	time.Sleep(30 * time.Millisecond)
+	require.NoError(t, exec.Err())
 
-	ping := customPingContext(parent)
-	model, stopModel := customModelContext(parent, 2*time.Second)
+	model, stopModel := customModelContext(exec, 2*time.Second)
 	defer stopModel()
-	write, stopWrite := historyWriteContext(parent, ChannelMonitorModeCustom)
-	defer stopWrite()
+	deadline, ok := model.Deadline()
+	require.True(t, ok)
+	require.Greater(t, time.Until(deadline), time.Second)
+}
 
-	require.NoError(t, ping.Err())
-	require.NoError(t, model.Err())
-	require.NoError(t, write.Err())
-	modelDeadline, ok := model.Deadline()
-	require.True(t, ok)
-	require.Greater(t, time.Until(modelDeadline), time.Second)
-	writeDeadline, ok := write.Deadline()
-	require.True(t, ok)
-	require.Less(t, time.Until(writeDeadline), monitorRunOneBuffer+time.Second)
+type blockUntilCancel struct {
+	started chan struct{}
+}
+
+func (b blockUntilCancel) RoundTrip(r *http.Request) (*http.Response, error) {
+	close(b.started)
+	<-r.Context().Done()
+	return nil, r.Context().Err()
+}
+
+func TestRunCustomChecks_ManualCancelStopsUpstream(t *testing.T) {
+	started := make(chan struct{})
+	orig := customMonitorHTTPClient
+	customMonitorHTTPClient = &http.Client{Transport: blockUntilCancel{started: started}}
+	t.Cleanup(func() { customMonitorHTTPClient = orig })
+
+	parent, cancel := context.WithCancel(context.Background())
+	svc := NewChannelMonitorService(&historyCaptureRepo{}, &duplicateChannelMonitorEncryptor{})
+	done := make(chan struct{})
+	go func() {
+		_ = svc.runCustomChecks(parent, &ChannelMonitor{
+			ID: 1, Provider: MonitorProviderOpenAI, Endpoint: "http://127.0.0.1:9", APIKey: "k", PrimaryModel: "m",
+		})
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("manual cancel left the custom check running")
+	}
 }
 
 func TestHistoryWriteContext_V1FollowsParent(t *testing.T) {

@@ -138,14 +138,27 @@ func (s *ChannelMonitorService) attachCustomOverrides(ctx context.Context, monit
 	}
 }
 
-// customPingContext 不继承模型检测的红色截止，避免 HEAD ping 吃掉模型请求预算。
-func customPingContext(parent context.Context) context.Context {
-	return context.WithoutCancel(parent)
+type scheduledProbeKey struct{}
+
+func withScheduledProbe(ctx context.Context) context.Context {
+	return context.WithValue(ctx, scheduledProbeKey{}, true)
 }
 
-// customModelContext 在 ping 结束后单独计时。截止长度是红色阈值。
+func isScheduledProbe(ctx context.Context) bool {
+	scheduled, _ := ctx.Value(scheduledProbeKey{}).(bool)
+	return scheduled
+}
+
+// scheduledCustomContext 给调度检测一段能盖住 ping、红色阈值和写库余量的期限。
+// 它脱离调度器的短超时，但模型请求仍由红色阈值单独截止。
+func scheduledCustomContext(parent context.Context, red time.Duration) (context.Context, context.CancelFunc) {
+	budget := red + monitorPingTimeout + monitorRunOneBuffer
+	return context.WithTimeout(context.WithoutCancel(parent), budget)
+}
+
+// customModelContext 在 ping 结束后按红色阈值计时，并继续响应父上下文的取消。
 func customModelContext(parent context.Context, red time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(parent), red)
+	return context.WithTimeout(parent, red)
 }
 
 // historyWriteContext 让 Custom 的写库不受调度器短超时影响。V1 仍使用原上下文。
@@ -248,8 +261,14 @@ func (s *ChannelMonitorService) runCustomChecks(ctx context.Context, m *ChannelM
 	if deadline <= 0 {
 		deadline = time.Duration(monitorCustomRedDefault) * time.Second
 	}
-	pingMs := pingEndpointOrigin(customPingContext(ctx), m.Endpoint)
-	ctx, cancel := customModelContext(ctx, deadline)
+	execCtx := ctx
+	stopExec := func() {}
+	if isScheduledProbe(ctx) {
+		execCtx, stopExec = scheduledCustomContext(ctx, deadline)
+	}
+	defer stopExec()
+	pingMs := pingEndpointOrigin(execCtx, m.Endpoint)
+	modelCtx, cancel := customModelContext(execCtx, deadline)
 	defer cancel()
 
 	models := append([]string{m.PrimaryModel}, m.ExtraModels...)
@@ -264,7 +283,7 @@ func (s *ChannelMonitorService) runCustomChecks(ctx context.Context, m *ChannelM
 	for i, model := range models {
 		i, model := i, model
 		eg.Go(func() error {
-			results[i] = runCustomCheckForModel(ctx, customProbeInput{
+			results[i] = runCustomCheckForModel(modelCtx, customProbeInput{
 				MonitorID: m.ID,
 				Provider:  m.Provider,
 				Endpoint:  m.Endpoint,

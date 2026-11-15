@@ -302,6 +302,7 @@ func (r *ChannelMonitorRunner) releaseInFlight(id int64) {
 func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), monitorRequestTimeout+monitorPingTimeout+monitorRunOneBuffer)
 	defer cancel()
+	ctx = withScheduledProbe(ctx)
 
 	defer r.releaseInFlight(id)
 

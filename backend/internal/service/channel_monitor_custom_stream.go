@@ -55,6 +55,9 @@ func runCustomCheckForModel(ctx context.Context, in customProbeInput) *CheckResu
 		MetricKind: MonitorMetricKindTTFT,
 		CheckedAt:  time.Now(),
 	}
+	defer func() {
+		res.Message = customProbeMessage(in.APIKey, res.Message)
+	}()
 	prompt := strings.TrimSpace(in.Config.Prompt)
 	if prompt == "" {
 		prompt = monitorCustomPromptDefault
@@ -146,6 +149,17 @@ func runCustomCheckForModel(ctx context.Context, in customProbeInput) *CheckResu
 		res.Message = customDiagnostic(res.Status, int(measured/time.Millisecond), processed, "")
 	}
 	return res
+}
+
+// customProbeMessage 先走监控模块已有的密钥模式，再替换本条配置的完整 API key。
+// 短于 8 个字符的 key 不做整段替换，避免把普通错误词清掉。
+func customProbeMessage(apiKey, msg string) string {
+	msg = sanitizeErrorMessage(msg)
+	key := strings.TrimSpace(apiKey)
+	if len(key) >= 8 {
+		msg = strings.ReplaceAll(msg, key, "***REDACTED***")
+	}
+	return truncateMessage(msg)
 }
 
 func customDiagnostic(status string, measured, processed int, cause string) string {

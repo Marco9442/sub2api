@@ -27,6 +27,29 @@ func (s *stubMonitorSvc) ListEnabledMonitors(_ context.Context) ([]*ChannelMonit
 	return s.enabled, nil
 }
 
+type scheduledProbeCapture struct {
+	stubMonitorSvc
+	ctx context.Context
+}
+
+func (s *scheduledProbeCapture) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
+	s.ctx = ctx
+	return s.stubMonitorSvc.RunCheck(ctx, id)
+}
+
+func TestRunOneMarksScheduledProbe(t *testing.T) {
+	svc := &scheduledProbeCapture{}
+	runner := newRunnerForTest(svc)
+	t.Cleanup(runner.Stop)
+	runner.runOne(7, "scheduled")
+	if !isScheduledProbe(svc.ctx) {
+		t.Fatal("scheduled run must be marked")
+	}
+	if isScheduledProbe(context.Background()) {
+		t.Fatal("plain context must not be marked scheduled")
+	}
+}
+
 func (s *stubMonitorSvc) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
 	s.runCount.Add(1)
 	if s.runCalled != nil {
