@@ -56,6 +56,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Cleanup function provider
 		provideCleanup,
+		// 账号管理 #2 不进 Wire：provideCleanup 参数表太长。
+		// wire_gen.go 在 adminHandlers 之后调用 startAccountSim，并把 Stop 接到 Cleanup 前面。
+		// 重新生成 wire 后要把这两处接回去。
 
 		// Application struct
 		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Cleanup"),

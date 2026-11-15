@@ -47,6 +47,10 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
+		// 账号管理 #2：只挂一个通配路由，由 accountsim 内部分发。
+		if h.Admin.AccountSim != nil {
+			admin.Any("/account-sim/*path", h.Admin.AccountSim.Serve)
+		}
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
