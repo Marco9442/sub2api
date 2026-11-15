@@ -20,36 +20,9 @@
           }}
         </p>
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
-          <div
-            class="tabs inline-flex w-full max-w-xl flex-wrap sm:w-auto"
-            role="tablist"
-            :aria-label="t('channelMonitorV2.admin.tabAria')"
-          >
-            <button
-              type="button"
-              role="tab"
-              class="tab flex-1 sm:flex-none"
-              :class="adminMonitorTab === 'v2' ? 'tab-active' : ''"
-              :aria-selected="adminMonitorTab === 'v2'"
-              @click="previewMode = 'v2'"
-            >
-              {{ t('channelMonitorV2.admin.tabV2') }}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              class="tab flex-1 sm:flex-none"
-              :class="adminMonitorTab === 'legacy' ? 'tab-active' : ''"
-              :aria-selected="adminMonitorTab === 'legacy'"
-              @click="previewMode = previewMode === 'custom' || savedMode === 'custom' ? 'custom' : 'v1'"
-            >
-              {{ savedMode === 'v2' && previewMode === 'v2' ? t('channelMonitorV2.admin.tabV1History') : t('channelMonitorV2.admin.tabV1Active') }}
-            </button>
-          </div>
+          <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
         </div>
       </header>
-
-      <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
 
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 
@@ -224,11 +197,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const previewMode = ref<ChannelMonitorMode>(getChannelMonitorMode())
 const savedMode = ref<ChannelMonitorMode>(previewMode.value)
-const adminMonitorTab = ref<'v2' | 'legacy'>(previewMode.value === 'v2' ? 'v2' : 'legacy')
-
-watch(previewMode, (mode) => {
-  adminMonitorTab.value = mode === 'v2' ? 'v2' : 'legacy'
-})
+const adminMonitorTab = computed(() => (previewMode.value === 'v2' ? 'v2' : 'legacy'))
 const {
   providerLabel,
   providerBadgeClass,

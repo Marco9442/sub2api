@@ -140,10 +140,6 @@ export default {
         'System mode is V1 active probes: manage probe monitors and run checks now; V2 aggregation does not run.',
       descriptionV2:
         'System mode is V2 passive monitoring: configure aggregation dimensions; V1 active probes do not run.',
-      tabAria: 'Monitor management',
-      tabV2: 'V2 data monitor config',
-      tabV1Active: 'V1 active probes',
-      tabV1History: 'V1 history (probes not active in current mode)',
     },
   },
 }

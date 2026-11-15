@@ -44,29 +44,41 @@ beforeEach(() => {
   listMonitors.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
 })
 
-describe('ChannelMonitorView mode reload', () => {
-  it('reloads monitor stats after the saved mode changes', async () => {
-    const wrapper = mount(ChannelMonitorView, {
-      global: {
-        stubs: {
-          AppLayout: { template: '<main><slot /></main>' },
-          TablePageLayout: true,
-          DataTable: true,
-          MonitorFiltersBar: true,
-          Pagination: true,
-          ConfirmDialog: true,
-          EmptyState: true,
-          HelpTooltip: true,
-          Toggle: true,
-          Icon: true,
-          MonitorFormDialog: true,
-          MonitorTemplateManagerDialog: true,
-          MonitorRunResultDialog: true,
-          MonitorPrimaryModelCell: true,
-          MonitorActionsCell: true,
-        },
+function mountView() {
+  return mount(ChannelMonitorView, {
+    global: {
+      stubs: {
+        AppLayout: { template: '<main><slot /></main>' },
+        TablePageLayout: true,
+        DataTable: true,
+        MonitorFiltersBar: true,
+        Pagination: true,
+        ConfirmDialog: true,
+        EmptyState: true,
+        HelpTooltip: true,
+        Toggle: true,
+        Icon: true,
+        MonitorFormDialog: true,
+        MonitorTemplateManagerDialog: true,
+        MonitorRunResultDialog: true,
+        MonitorPrimaryModelCell: true,
+        MonitorActionsCell: true,
       },
-    })
+    },
+  })
+}
+
+describe('ChannelMonitorView mode reload', () => {
+  it('shows the mode panel as the only mode switcher inside the page header', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('header button.save-mode').exists()).toBe(true)
+    expect(wrapper.find('[role="tablist"]').exists()).toBe(false)
+  })
+
+  it('reloads monitor stats after the saved mode changes', async () => {
+    const wrapper = mountView()
     await flushPromises()
     expect(listMonitors).not.toHaveBeenCalled()
 
