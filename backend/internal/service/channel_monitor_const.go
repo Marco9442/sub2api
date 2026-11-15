@@ -237,4 +237,8 @@ var (
 		"CHANNEL_MONITOR_INVALID_TPS",
 		"token/s range requires 0 <= min < max",
 	)
+	ErrChannelMonitorInvalidWindows = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_WINDOWS",
+		"availability windows must be 1-6 unique entries of 1-60 minutes or 1-30 days",
+	)
 )

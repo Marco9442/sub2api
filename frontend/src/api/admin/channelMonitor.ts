@@ -90,8 +90,8 @@ export interface ChannelMonitor {
   primary_tokens_per_sec?: number | null
   primary_metric_kind?: string
   custom_override?: ChannelMonitorCustomOverride | null
-  /** Primary model 7-day availability percentage (0-100) */
-  availability_7d: number
+  /** Primary model 7-day availability percentage (0-100); null when there is no history yet */
+  availability_7d: number | null
   /** Latest status per extra model (used for hover tooltip) */
   extra_models_status: ExtraModelStatus[]
   /** 请求自定义快照字段（高级设置） */
@@ -175,6 +175,7 @@ export interface ChannelMonitorCustomConfig {
   tps_enabled: boolean
   tps_min: number
   tps_max: number
+  availability_windows?: { amount: number; unit: 'm' | 'd' }[]
 }
 
 export interface ChannelMonitorCustomOverride {

@@ -378,3 +378,61 @@ func redactDisplayedMetrics(kind, status string, latency *int, tokens *float64) 
 	}
 	return latency, tokens
 }
+
+type availabilitySecondsRepo interface {
+	ComputeAvailabilityForMonitorsSeconds(ctx context.Context, ids []int64, seconds int, kind string) (map[int64][]*ChannelMonitorAvailability, error)
+}
+
+// fillWindowAvailability 在 Custom 模式下，按配置的第一档时间计算可用率。
+// 该档内没有记录时保持 nil。非 Custom 模式不做任何事。
+func (s *ChannelMonitorService) fillWindowAvailability(ctx context.Context, views []*UserMonitorView, windowKey string) {
+	if len(views) == 0 || s.probeRuntime(ctx).Mode != ChannelMonitorModeCustom {
+		return
+	}
+	cfg, _ := s.loadCustomConfig(ctx)
+	windows := cfg.AvailabilityWindows
+	if len(windows) == 0 {
+		windows = defaultAvailabilityWindows()
+	}
+	repo, ok := s.repo.(availabilitySecondsRepo)
+	if !ok {
+		return
+	}
+	ids := make([]int64, 0, len(views))
+	for _, v := range views {
+		ids = append(ids, v.ID)
+	}
+	availMap, err := repo.ComputeAvailabilityForMonitorsSeconds(ctx, ids, pickWindow(windows, windowKey).Seconds(), s.availabilityKind(ctx))
+	if err != nil {
+		return
+	}
+	for _, v := range views {
+		byModel := map[string]*ChannelMonitorAvailability{}
+		for _, row := range availMap[v.ID] {
+			byModel[row.Model] = row
+		}
+		v.WindowAvailability = windowAvailability(byModel, v.PrimaryModel)
+	}
+}
+
+// AvailabilityWindows 返回 Custom 模式的时间档；非 Custom 返回 nil。
+func (s *ChannelMonitorService) AvailabilityWindows(ctx context.Context) []AvailabilityWindow {
+	if s.probeRuntime(ctx).Mode != ChannelMonitorModeCustom {
+		return nil
+	}
+	cfg, _ := s.loadCustomConfig(ctx)
+	if len(cfg.AvailabilityWindows) == 0 {
+		return defaultAvailabilityWindows()
+	}
+	return cfg.AvailabilityWindows
+}
+
+// pickWindow 匹配用户选择的时间档；没有匹配时用第一档。
+func pickWindow(windows []AvailabilityWindow, key string) AvailabilityWindow {
+	for _, w := range windows {
+		if w.Key() == key {
+			return w
+		}
+	}
+	return windows[0]
+}

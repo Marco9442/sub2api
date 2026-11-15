@@ -57,10 +57,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { windowLabel } from '@/utils/channelMonitorCustom'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
-export type MonitorWindow = '7d' | '15d' | '30d'
+export type MonitorWindow = string
 export type OverallStatus = 'operational' | 'degraded'
 
 const props = defineProps<{
@@ -68,6 +69,7 @@ const props = defineProps<{
   intervalSeconds: number
   window: MonitorWindow
   loading: boolean
+  windows?: { amount: number; unit: 'm' | 'd' }[]
   autoRefresh?: {
     enabled: { value: boolean }
     intervalSeconds: { value: number }
@@ -85,11 +87,19 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const windowOptions = computed<{ value: MonitorWindow; label: string }[]>(() => [
-  { value: '7d', label: t('channelStatus.windowTab.7d') },
-  { value: '15d', label: t('channelStatus.windowTab.15d') },
-  { value: '30d', label: t('channelStatus.windowTab.30d') },
-])
+const windowOptions = computed<{ value: MonitorWindow; label: string }[]>(() => {
+  if (props.windows && props.windows.length > 0) {
+    return props.windows.map((w) => {
+      const value = `${w.amount}${w.unit}`
+      return { value, label: windowLabel(value, t) }
+    })
+  }
+  return [
+    { value: '7d', label: t('channelStatus.windowTab.7d') },
+    { value: '15d', label: t('channelStatus.windowTab.15d') },
+    { value: '30d', label: t('channelStatus.windowTab.30d') },
+  ]
+})
 
 const overallLabel = computed(() => t(`channelStatus.overall.${props.overallStatus}`))
 

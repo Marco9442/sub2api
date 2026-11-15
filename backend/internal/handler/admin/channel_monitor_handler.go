@@ -109,7 +109,7 @@ type channelMonitorResponse struct {
 	UpdatedAt           string                               `json:"updated_at"`
 	PrimaryStatus       string                               `json:"primary_status"`
 	PrimaryLatencyMs    *int                                 `json:"primary_latency_ms"`
-	Availability7d      float64                              `json:"availability_7d"`
+	Availability7d      *float64                             `json:"availability_7d"`
 	ExtraModelsStatus   []dto.ChannelMonitorExtraModelStatus `json:"extra_models_status"`
 	// 请求自定义快照：前端编辑 / 展示「高级设置」用
 	TemplateID       *int64            `json:"template_id"`

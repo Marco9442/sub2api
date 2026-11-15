@@ -131,4 +131,25 @@ describe('ChannelMonitorModePanel', () => {
     await flushPromises()
     expect(mocks.updateMode).toHaveBeenCalledWith('v1', savedView.custom)
   })
+
+  it('saves availability windows and blocks invalid ones', async () => {
+    const wrapper = await mountPanel()
+    const input = wrapper.find('[data-section="windows"] input')
+
+    await input.setValue('31d')
+    expect(wrapper.find('[data-section="windows"]').text()).toContain('channelMonitorCustom.windowsInvalid')
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
+
+    await input.setValue('15m,1d')
+    expect(saveButton(wrapper).attributes('disabled')).toBeUndefined()
+
+    await saveButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(mocks.updateMode).toHaveBeenCalledWith('custom', expect.objectContaining({
+      availability_windows: [
+        { amount: 15, unit: 'm' },
+        { amount: 1, unit: 'd' },
+      ],
+    }))
+  })
 })

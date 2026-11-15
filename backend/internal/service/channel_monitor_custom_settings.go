@@ -18,6 +18,7 @@ func channelMonitorCustomKeys() []string {
 		SettingKeyChannelMonitorCustomTPSEnabled,
 		SettingKeyChannelMonitorCustomTPSMin,
 		SettingKeyChannelMonitorCustomTPSMax,
+		SettingKeyChannelMonitorCustomWindows,
 	}
 }
 
@@ -57,6 +58,7 @@ func (s *SettingService) SaveChannelMonitorMode(ctx context.Context, mode string
 		SettingKeyChannelMonitorCustomTPSEnabled:        strconv.FormatBool(cfg.TPSEnabled),
 		SettingKeyChannelMonitorCustomTPSMin:            strconv.FormatFloat(cfg.TPSMin, 'f', -1, 64),
 		SettingKeyChannelMonitorCustomTPSMax:            strconv.FormatFloat(cfg.TPSMax, 'f', -1, 64),
+		SettingKeyChannelMonitorCustomWindows:           formatAvailabilityWindows(cfg.AvailabilityWindows),
 	}
 	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
 		return err
@@ -99,6 +101,10 @@ func parseChannelMonitorCustom(vals map[string]string) ChannelMonitorCustomConfi
 	}
 	if v, ok := atofSetting(vals, SettingKeyChannelMonitorCustomTPSMax); ok {
 		cfg.TPSMax = v
+	}
+	windows, err := parseAvailabilityWindows(vals[SettingKeyChannelMonitorCustomWindows])
+	if err == nil {
+		cfg.AvailabilityWindows = windows
 	}
 	return cfg
 }

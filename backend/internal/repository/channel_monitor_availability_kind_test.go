@@ -21,3 +21,10 @@ func TestAvailabilityKindPredicateSeparatesModes(t *testing.T) {
 	require.Contains(t, v1, "AND metric_kind IS DISTINCT FROM 'ttft'")
 	require.NotContains(t, v1, "metric_kind IN ('ttft', 'quota')")
 }
+
+func TestAvailabilitySecondsQueryUsesSeconds(t *testing.T) {
+	query := availabilitySecondsQuery(service.MonitorMetricKindTTFT, true)
+	require.Contains(t, query, "' seconds')::interval")
+	require.NotContains(t, query, "' days'")
+	require.Contains(t, query, "metric_kind IN ('ttft', 'quota')")
+}

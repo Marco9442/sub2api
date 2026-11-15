@@ -507,6 +507,7 @@ const (
 	SettingKeyChannelMonitorCustomTPSEnabled        = "channel_monitor_custom_tps_enabled"
 	SettingKeyChannelMonitorCustomTPSMin            = "channel_monitor_custom_tps_min"
 	SettingKeyChannelMonitorCustomTPSMax            = "channel_monitor_custom_tps_max"
+	SettingKeyChannelMonitorCustomWindows           = "channel_monitor_custom_windows"
 
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].

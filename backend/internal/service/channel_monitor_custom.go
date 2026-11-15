@@ -36,6 +36,8 @@ type ChannelMonitorCustomConfig struct {
 	TPSEnabled        bool    `json:"tps_enabled"`
 	TPSMin            float64 `json:"tps_min"`
 	TPSMax            float64 `json:"tps_max"`
+	// AvailabilityWindows 用户页可用率的时间档。空值表示默认的 7/15/30 天。
+	AvailabilityWindows []AvailabilityWindow `json:"availability_windows,omitempty"`
 }
 
 // ChannelMonitorCustomOverride 是单条监控的覆盖。nil 字段继承全局配置。
@@ -116,10 +118,24 @@ func validateCustomConfig(cfg ChannelMonitorCustomConfig) error {
 	if err := validateCustomPrompt(cfg.Prompt); err != nil {
 		return err
 	}
+	if err := validateAvailabilityWindows(cfg.AvailabilityWindows); err != nil {
+		return err
+	}
 	if err := validateTTFTPolicy(resolveTTFTPolicy(cfg, nil)); err != nil {
 		return err
 	}
 	return validateTPSPolicy(resolveTPSPolicy(cfg, nil))
+}
+
+// validateAvailabilityWindows 校验时间档。空值合法，表示使用默认档。
+func validateAvailabilityWindows(windows []AvailabilityWindow) error {
+	if len(windows) == 0 {
+		return nil
+	}
+	if _, err := parseAvailabilityWindows(formatAvailabilityWindows(windows)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func validateCustomOverride(cfg ChannelMonitorCustomConfig, ov *ChannelMonitorCustomOverride) error {

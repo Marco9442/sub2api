@@ -166,10 +166,13 @@ type UserMonitorView struct {
 	PrimaryLatencyMs     *int
 	PrimaryTokensPerSec  *float64
 	PrimaryMetricKind    string
-	PrimaryPingLatencyMs *int    // 主模型最近一次 ping 延迟
-	Availability7d       float64 // 0-100
-	ExtraModels          []ExtraModelStatus
-	Timeline             []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
+	PrimaryPingLatencyMs *int     // 主模型最近一次 ping 延迟
+	Availability7d       *float64 // 0-100，窗口内没有记录时为 nil
+	// WindowAvailability 所选时间档内的可用率，语义同 Availability7d。
+	// 仅 Custom 模式填充；nil 表示该档内没有记录。
+	WindowAvailability *float64
+	ExtraModels        []ExtraModelStatus
+	Timeline           []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
 	// LatestQuota 主模型最近一次配额快照；channel_monitor_show_quota=false
 	// 时由 handler 服务端剥离。
 	LatestQuota *domain.MonitorQuotaSnapshot
@@ -210,9 +213,9 @@ type ModelDetail struct {
 	LatestLatencyMs    *int
 	LatestTokensPerSec *float64
 	MetricKind         string
-	Availability7d     float64 // 0-100
-	Availability15d    float64
-	Availability30d    float64
+	Availability7d     *float64 // 0-100，窗口内没有记录时为 nil
+	Availability15d    *float64
+	Availability30d    *float64
 	AvgLatency7dMs     *int
 }
 
@@ -274,7 +277,7 @@ type MonitorStatusSummary struct {
 	PrimaryLatencyMs    *int
 	PrimaryTokensPerSec *float64
 	PrimaryMetricKind   string
-	Availability7d      float64 // 0-100，无历史时为 0
+	Availability7d      *float64 // 0-100，窗口内没有记录时为 nil
 	ExtraModels         []ExtraModelStatus
 	LatestQuota         *domain.MonitorQuotaSnapshot // 主模型最近配额快照（配额模式）
 }

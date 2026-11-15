@@ -63,6 +63,19 @@
         <p v-else class="input-hint">{{ t('channelMonitorCustom.redHint') }}</p>
       </section>
 
+      <section data-section="windows" :class="groupClass">
+        <label class="input-label" for="monitor-custom-windows">{{ t('channelMonitorCustom.windows') }}</label>
+        <input
+          id="monitor-custom-windows"
+          v-model="windowsText"
+          class="input"
+          :class="{ 'input-error': windowsInvalid }"
+          placeholder="7d,15d,30d"
+        />
+        <p v-if="windowsInvalid" class="input-error-text">{{ t('channelMonitorCustom.windowsInvalid') }}</p>
+        <p v-else class="input-hint">{{ t('channelMonitorCustom.windowsHint') }}</p>
+      </section>
+
       <section data-section="ttft" :class="groupClass">
         <div class="flex items-start justify-between gap-3">
           <div>
@@ -119,7 +132,7 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { channelMonitorAPI, type ChannelMonitorCustomConfig } from '@/api/admin/channelMonitor'
 import { normalizeChannelMonitorMode, type ChannelMonitorMode } from '@/utils/channelMonitorMode'
-import { customConfigErrors, defaultCustomConfig } from '@/utils/channelMonitorCustom'
+import { customConfigErrors, defaultCustomConfig, parseAvailabilityWindows } from '@/utils/channelMonitorCustom'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
 
@@ -136,20 +149,30 @@ const groupClass = 'rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:bo
 const savedCustom = ref<ChannelMonitorCustomConfig>(defaultCustomConfig())
 const custom = ref<ChannelMonitorCustomConfig>(defaultCustomConfig())
 const saving = ref(false)
+// 时间档用文本编辑，保存时解析成数组。空文本表示使用默认档。
+const windowsText = ref('')
+const savedWindowsText = ref('')
 
 const editingCustom = computed(() => preview.value === 'custom')
 const errors = computed(() => (editingCustom.value ? customConfigErrors(custom.value) : {}))
+const parsedWindows = computed(() => parseAvailabilityWindows(windowsText.value))
+const windowsInvalid = computed(() => editingCustom.value && parsedWindows.value === null)
 const dirty = computed(
   () =>
     preview.value !== saved.value ||
-    (editingCustom.value && JSON.stringify(custom.value) !== JSON.stringify(savedCustom.value)),
+    (editingCustom.value &&
+      (JSON.stringify(custom.value) !== JSON.stringify(savedCustom.value) ||
+        windowsText.value.trim() !== savedWindowsText.value)),
 )
-const canSave = computed(() => !saving.value && dirty.value && Object.keys(errors.value).length === 0)
+const canSave = computed(() => !saving.value && dirty.value && !windowsInvalid.value && Object.keys(errors.value).length === 0)
 
 function applyView(view: { mode: string; custom: Partial<ChannelMonitorCustomConfig> }) {
   saved.value = normalizeChannelMonitorMode(view.mode)
   savedCustom.value = { ...defaultCustomConfig(), ...view.custom }
   custom.value = { ...savedCustom.value }
+  const text = (view.custom.availability_windows ?? []).map((w) => `${w.amount}${w.unit}`).join(',')
+  savedWindowsText.value = text
+  windowsText.value = text
 }
 
 async function load() {
@@ -165,7 +188,7 @@ async function save() {
   if (!canSave.value) return
   saving.value = true
   try {
-    applyView(await channelMonitorAPI.updateMode(preview.value, editingCustom.value ? custom.value : savedCustom.value))
+    applyView(await channelMonitorAPI.updateMode(preview.value, editingCustom.value ? { ...custom.value, availability_windows: parsedWindows.value ?? undefined } : savedCustom.value))
     await appStore.fetchPublicSettings(true)
     appStore.showSuccess(t('channelMonitorCustom.saved'))
   } catch (err: unknown) {

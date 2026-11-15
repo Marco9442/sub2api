@@ -81,6 +81,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView } from '@/api/channelMonitor'
+import { windowLabel } from '@/utils/channelMonitorCustom'
 import {
   useChannelMonitorFormat,
   providerGradient,
@@ -108,7 +109,7 @@ const PROVIDER_TINT: Record<string, string> = {
 
 const props = withDefaults(defineProps<{
   item: UserMonitorView
-  window: '7d' | '15d' | '30d'
+  window: string
   availabilityValue: number | null
   countdownSeconds: number
   metric?: 'latency' | 'ttft'
@@ -118,7 +119,7 @@ const emit = defineEmits<{
   (e: 'click'): void
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const {
   statusLabel,
   statusBadgeClass,
@@ -159,7 +160,9 @@ const quotaVisible = computed(
 )
 
 const availabilityLabel = computed(() => {
-  const win = t(`channelStatus.windowTab.${props.window}`)
+  // 固定档用原有文案；Custom 时间档按分钟或天格式化。
+  const key = `channelStatus.windowTab.${props.window}`
+  const win = te(key) ? t(key) : windowLabel(props.window, t)
   return `${t('monitorCommon.availabilityPrefix')} · ${win}`
 })
 

@@ -28,6 +28,13 @@ type channelMonitorCustomConfigRequest struct {
 	TPSEnabled        bool    `json:"tps_enabled"`
 	TPSMin            float64 `json:"tps_min"`
 	TPSMax            float64 `json:"tps_max"`
+	// 空数组表示使用默认的 7/15/30 天。
+	AvailabilityWindows []availabilityWindowRequest `json:"availability_windows"`
+}
+
+type availabilityWindowRequest struct {
+	Amount int    `json:"amount"`
+	Unit   string `json:"unit"`
 }
 
 type channelMonitorModeRequest struct {
@@ -50,6 +57,14 @@ func customOverrideFromRequest(req *channelMonitorCustomOverrideRequest) *servic
 	}
 }
 
+func availabilityWindowsFromRequest(req []availabilityWindowRequest) []service.AvailabilityWindow {
+	out := make([]service.AvailabilityWindow, 0, len(req))
+	for _, w := range req {
+		out = append(out, service.AvailabilityWindow{Amount: w.Amount, Unit: w.Unit})
+	}
+	return out
+}
+
 func customConfigFromRequest(req channelMonitorCustomConfigRequest) service.ChannelMonitorCustomConfig {
 	prompt := req.Prompt
 	yellow, red := req.YellowSeconds, req.RedSeconds
@@ -62,16 +77,17 @@ func customConfigFromRequest(req channelMonitorCustomConfigRequest) service.Chan
 		multiplier = 1
 	}
 	return service.ChannelMonitorCustomConfig{
-		Prompt:            prompt,
-		YellowSeconds:     yellow,
-		RedSeconds:        red,
-		TTFTAdjustEnabled: req.TTFTAdjustEnabled,
-		TTFTMultiplier:    multiplier,
-		TTFTMinMs:         req.TTFTMinMs,
-		TTFTMaxMs:         req.TTFTMaxMs,
-		TPSEnabled:        req.TPSEnabled,
-		TPSMin:            req.TPSMin,
-		TPSMax:            req.TPSMax,
+		Prompt:              prompt,
+		YellowSeconds:       yellow,
+		RedSeconds:          red,
+		TTFTAdjustEnabled:   req.TTFTAdjustEnabled,
+		TTFTMultiplier:      multiplier,
+		TTFTMinMs:           req.TTFTMinMs,
+		TTFTMaxMs:           req.TTFTMaxMs,
+		TPSEnabled:          req.TPSEnabled,
+		TPSMin:              req.TPSMin,
+		TPSMax:              req.TPSMax,
+		AvailabilityWindows: availabilityWindowsFromRequest(req.AvailabilityWindows),
 	}
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { customConfigErrors, defaultCustomConfig, hasCustomOverride } from '../channelMonitorCustom'
+import { customConfigErrors, defaultCustomConfig, hasCustomOverride, windowLabel, parseAvailabilityWindows } from '../channelMonitorCustom'
 
 describe('customConfigErrors', () => {
   it('accepts the default config', () => {
@@ -41,5 +41,42 @@ describe('hasCustomOverride', () => {
     expect(hasCustomOverride(null)).toBe(false)
     expect(hasCustomOverride({ ttft_multiplier: null })).toBe(false)
     expect(hasCustomOverride({ tps_enabled: false })).toBe(true)
+  })
+})
+
+describe('availabilityWindows', () => {
+  it('parses and sorts windows', () => {
+    expect(parseAvailabilityWindows('5d, 15m')).toEqual([
+      { amount: 15, unit: 'm' },
+      { amount: 5, unit: 'd' },
+    ])
+  })
+
+  it('rejects invalid windows', () => {
+    expect(parseAvailabilityWindows('0d')).toBeNull()
+    expect(parseAvailabilityWindows('31d')).toBeNull()
+    expect(parseAvailabilityWindows('15m,15m')).toBeNull()
+    expect(parseAvailabilityWindows('1m,2m,3m,4m,5m,6m,7m')).toBeNull()
+  })
+
+  it('treats an empty field as the default windows', () => {
+    expect(parseAvailabilityWindows('')).toEqual([
+      { amount: 7, unit: 'd' },
+      { amount: 15, unit: 'd' },
+      { amount: 30, unit: 'd' },
+    ])
+  })
+})
+
+describe('windowLabel', () => {
+  const t = (key: string, n: number) => `${key}:${n}`
+
+  it('formats minutes and days', () => {
+    expect(windowLabel('15m', t)).toBe('channelMonitorCustom.windowMinutes:15')
+    expect(windowLabel('5d', t)).toBe('channelMonitorCustom.windowDays:5')
+  })
+
+  it('keeps unknown keys as they are', () => {
+    expect(windowLabel('abc', t)).toBe('abc')
   })
 })

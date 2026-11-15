@@ -62,7 +62,8 @@ type channelMonitorUserListItem struct {
 	PrimaryTokensPerSec  *float64                             `json:"primary_tokens_per_sec,omitempty"`
 	PrimaryMetricKind    string                               `json:"primary_metric_kind,omitempty"`
 	PrimaryPingLatencyMs *int                                 `json:"primary_ping_latency_ms"`
-	Availability7d       float64                              `json:"availability_7d"`
+	Availability7d       *float64                             `json:"availability_7d"`
+	WindowAvailability   *float64                             `json:"window_availability,omitempty"`
 	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
 	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
 	// LatestQuota 主模型最近配额快照；channel_monitor_show_quota=false 时
@@ -95,9 +96,9 @@ type channelMonitorUserModelStat struct {
 	LatestLatencyMs    *int     `json:"latest_latency_ms"`
 	LatestTokensPerSec *float64 `json:"latest_tokens_per_sec,omitempty"`
 	MetricKind         string   `json:"metric_kind,omitempty"`
-	Availability7d     float64  `json:"availability_7d"`
-	Availability15d    float64  `json:"availability_15d"`
-	Availability30d    float64  `json:"availability_30d"`
+	Availability7d     *float64 `json:"availability_7d"`
+	Availability15d    *float64 `json:"availability_15d"`
+	Availability30d    *float64 `json:"availability_30d"`
 	AvgLatency7dMs     *int     `json:"avg_latency_7d_ms"`
 }
 
@@ -135,6 +136,7 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		PrimaryMetricKind:    v.PrimaryMetricKind,
 		PrimaryPingLatencyMs: v.PrimaryPingLatencyMs,
 		Availability7d:       v.Availability7d,
+		WindowAvailability:   v.WindowAvailability,
 		ExtraModels:          extras,
 		Timeline:             timeline,
 	}
@@ -176,7 +178,7 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}})
 		return
 	}
-	views, err := h.monitorService.ListUserView(c.Request.Context())
+	views, err := h.monitorService.ListUserView(c.Request.Context(), c.Query("window"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -186,7 +188,7 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	for _, v := range views {
 		items = append(items, userMonitorViewToItem(v, includeQuota))
 	}
-	response.Success(c, gin.H{"items": items})
+	response.Success(c, gin.H{"items": items, "windows": h.monitorService.AvailabilityWindows(c.Request.Context())})
 }
 
 // GetStatus GET /api/v1/channel-monitors/:id/status

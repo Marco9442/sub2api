@@ -307,6 +307,16 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitorsKind(ctx contex
 }
 
 func availabilityQuery(kind string, batch bool) string {
+	return availabilityWindowQuery(kind, batch, "days")
+}
+
+// availabilitySecondsQuery 与 availabilityQuery 相同，但窗口单位是秒，
+// 供 Custom 模式的分钟级时间档使用。
+func availabilitySecondsQuery(kind string, batch bool) string {
+	return availabilityWindowQuery(kind, batch, "seconds")
+}
+
+func availabilityWindowQuery(kind string, batch bool, unit string) string {
 	where := "monitor_id = $1"
 	idCol := ""
 	group := "GROUP BY model"
@@ -323,10 +333,10 @@ func availabilityQuery(kind string, batch bool) string {
 		       %s AS avg_latency_ms
 		FROM channel_monitor_histories
 		WHERE %s
-		  AND checked_at >= NOW() - ($2::int || ' days')::interval
+		  AND checked_at >= NOW() - ($2::int || ' %s')::interval
 		  AND %s
 		%s
-	`, idCol, availabilityAvgExpr(kind), where, availabilityKindPredicate(kind), group)
+	`, idCol, availabilityAvgExpr(kind), where, unit, availabilityKindPredicate(kind), group)
 }
 
 // availabilityKindPredicate 把可用率统计限制在当前模式的指标上。
@@ -403,4 +413,27 @@ func scanMetric(kind *string, tokens **float64, rawKind sql.NullString, rawToken
 		}
 	}
 	assignNullFloat(tokens, rawTokens)
+}
+
+func (r *channelMonitorRepository) ComputeAvailabilityForMonitorsSeconds(ctx context.Context, ids []int64, seconds int, kind string) (map[int64][]*service.ChannelMonitorAvailability, error) {
+	out := make(map[int64][]*service.ChannelMonitorAvailability, len(ids))
+	if len(ids) == 0 || seconds <= 0 {
+		return out, nil
+	}
+	rows, err := r.db.QueryContext(ctx, availabilitySecondsQuery(kind, true), pq.Array(ids), seconds)
+	if err != nil {
+		return nil, fmt.Errorf("query availability batch seconds: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var monitorID int64
+		row := &service.ChannelMonitorAvailability{}
+		var avgLatency sql.NullFloat64
+		if err := rows.Scan(&monitorID, &row.Model, &row.TotalChecks, &row.OperationalChecks, &avgLatency); err != nil {
+			return nil, fmt.Errorf("scan availability batch seconds row: %w", err)
+		}
+		finalizeAvailabilityRow(row, avgLatency)
+		out[monitorID] = append(out[monitorID], row)
+	}
+	return out, rows.Err()
 }

@@ -55,7 +55,7 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 //	1 次批量 latest（含 ping_latency_ms）；
 //	1 次批量 7d availability；
 //	1 次批量 timeline（主模型最近 N 条）。
-func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonitorView, error) {
+func (s *ChannelMonitorService) ListUserView(ctx context.Context, windowKey string) ([]*UserMonitorView, error) {
 	monitors, err := s.repo.ListEnabled(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)
@@ -74,6 +74,7 @@ func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonito
 		primaryLatest := pickLatest(latestMap[m.ID], m.PrimaryModel)
 		views = append(views, buildUserViewFromSummary(m, summaries[m.ID], primaryLatest, timelineMap[m.ID]))
 	}
+	s.fillWindowAvailability(ctx, views, windowKey)
 	return views, nil
 }
 
@@ -209,7 +210,8 @@ func buildStatusSummary(
 			summary.LatestQuota = l.Quota
 		}
 		if a, ok := availByModel[primary]; ok {
-			summary.Availability7d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			summary.Availability7d = &pct
 		}
 	}
 	for _, model := range extras {
@@ -288,14 +290,17 @@ func mergeModelDetails(
 			d.MetricKind = l.MetricKind
 		}
 		if a, ok := availMap[monitorAvailability7Days][model]; ok {
-			d.Availability7d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			d.Availability7d = &pct
 			d.AvgLatency7dMs = a.AvgLatencyMs
 		}
 		if a, ok := availMap[monitorAvailability15Days][model]; ok {
-			d.Availability15d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			d.Availability15d = &pct
 		}
 		if a, ok := availMap[monitorAvailability30Days][model]; ok {
-			d.Availability30d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			d.Availability30d = &pct
 		}
 		out = append(out, d)
 	}
