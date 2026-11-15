@@ -49,15 +49,12 @@
       :primary-label="primaryMetricLabel"
       :primary-value="primaryMetricValue"
       :primary-unit="primaryMetricUnit"
+      :primary-note="tokenRateNote"
       secondary-icon="globe"
       :secondary-label="t('monitorCommon.endpointPing')"
       :secondary-value="formatLatency(item.primary_ping_latency_ms)"
       secondary-unit="ms"
     />
-    <p v-if="tokenRate !== 'omit'" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-      {{ t('channelMonitorCustom.tokensPerSec') }}
-      {{ tokenRate === 'hidden' ? t('channelMonitorCustom.hidden') : item.primary_tokens_per_sec?.toFixed(3) }}
-    </p>
 
     <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
     <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" class="mt-2" />
@@ -136,11 +133,12 @@ const providerTintClass = computed(() =>
 )
 
 const rowKind = computed(() => resolveMonitorMetricKind(props.item.primary_metric_kind, props.metric))
-const tokenRate = computed(() => tokenRateDisplay(
-  rowKind.value,
-  props.item.primary_latency_ms,
-  props.item.primary_tokens_per_sec,
-))
+const tokenRateNote = computed(() => {
+  const display = tokenRateDisplay(rowKind.value, props.item.primary_latency_ms, props.item.primary_tokens_per_sec)
+  if (display === 'omit') return undefined
+  const value = display === 'hidden' ? t('channelMonitorCustom.hidden') : props.item.primary_tokens_per_sec?.toFixed(3)
+  return `${value} ${t('channelMonitorCustom.tokensPerSec')}`
+})
 const primaryMetricLabel = computed(() => {
   if (rowKind.value === 'ttft') return t('channelMonitorCustom.ttft')
   if (rowKind.value === 'quota') return t('channelMonitorCustom.quota')
