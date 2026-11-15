@@ -154,6 +154,9 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := validateBodyModeForProtocol(p.Provider, p.APIMode, p.BodyOverrideMode, p.BodyOverride); err != nil {
 		return nil, err
 	}
+	if err := validateCustomStreamingProbe(s.probeRuntime(ctx).Mode, p.BodyOverrideMode, p.BodyOverride); err != nil {
+		return nil, err
+	}
 	if err := validateExtraHeaders(p.ExtraHeaders); err != nil {
 		return nil, err
 	}
@@ -228,6 +231,9 @@ func (s *ChannelMonitorService) Duplicate(
 
 	source, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateCustomStreamingProbe(s.probeRuntime(ctx).Mode, source.BodyOverrideMode, source.BodyOverride); err != nil {
 		return nil, err
 	}
 
@@ -458,6 +464,11 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	}
 	if err := applyMonitorUpdate(existing, p); err != nil {
 		return nil, err
+	}
+	if p.BodyOverride != nil || p.BodyOverrideMode != nil || p.Provider != nil || p.APIMode != nil {
+		if err := validateCustomStreamingProbe(s.probeRuntime(ctx).Mode, existing.BodyOverrideMode, existing.BodyOverride); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.enforceCustomInterval(ctx, existing.IntervalSeconds, existing.JitterSeconds); err != nil {
 		return nil, err

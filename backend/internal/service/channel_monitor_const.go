@@ -241,4 +241,11 @@ var (
 		"CHANNEL_MONITOR_INVALID_WINDOWS",
 		"availability windows must be 1-6 unique entries of 1-60 minutes or 1-30 days",
 	)
+	ErrChannelMonitorCustomStreamRequired = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_CUSTOM_STREAM_REQUIRED",
+		customProbeRequiresStream,
+	)
 )
+
+// customProbeRequiresStream 是 Custom 拒绝非流式探测时给管理员和历史记录的同一句说明。
+const customProbeRequiresStream = "custom probe requires a streaming request; omit stream or set it to true"

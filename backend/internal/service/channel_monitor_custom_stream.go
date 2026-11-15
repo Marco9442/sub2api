@@ -85,6 +85,10 @@ func runCustomCheckForModel(ctx context.Context, in customProbeInput) *CheckResu
 	}
 	body, streaming, err := applyCustomStream(in.Provider, bodyOverrideMode(in.Opts), body)
 	if err != nil {
+		if errors.Is(err, ErrChannelMonitorCustomStreamRequired) {
+			res.Message = customProbeRequiresStream
+			return res
+		}
 		res.Message = truncateMessage(sanitizeErrorMessage(err.Error()))
 		return res
 	}
@@ -211,37 +215,27 @@ func applyCustomStream(provider string, mode string, body []byte) ([]byte, bool,
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, false, fmt.Errorf("decode probe body: %w", err)
 	}
+	// 非流式完整耗时不能写成 TTFT。拒绝后其余路径都按流式探测，其他覆盖保持原样。
+	if err := rejectNonStreamingCustomReplace(mode, payload); err != nil {
+		return nil, false, err
+	}
 	if provider == MonitorProviderGemini {
-		streaming := true
-		if mode == MonitorBodyOverrideModeReplace {
-			if explicit, ok := payload["stream"].(bool); ok && !explicit {
-				streaming = false
-			}
-		}
 		if _, ok := payload["stream"]; !ok {
-			return body, streaming, nil
+			return body, true, nil
 		}
 		delete(payload, "stream")
 		out, err := json.Marshal(payload)
 		if err != nil {
 			return nil, false, err
 		}
-		return out, streaming, nil
+		return out, true, nil
 	}
-	streaming := true
-	if mode == MonitorBodyOverrideModeReplace {
-		if explicit, ok := payload["stream"].(bool); ok && !explicit {
-			streaming = false
-		}
-	}
-	if streaming {
-		payload["stream"] = true
-	}
+	payload["stream"] = true
 	out, err := json.Marshal(payload)
 	if err != nil {
 		return nil, false, err
 	}
-	return out, streaming, nil
+	return out, true, nil
 }
 
 func streamProtocolFor(provider, apiMode string) monitorStreamProtocol {

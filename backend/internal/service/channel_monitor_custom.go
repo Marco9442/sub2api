@@ -138,6 +138,26 @@ func validateAvailabilityWindows(windows []AvailabilityWindow) error {
 	return nil
 }
 
+// validateCustomStreamingProbe 只在 Custom 模式拒绝 replace 请求体里的 stream:false。
+// 其他模式仍可用非流式覆盖。merge / off 不受影响。
+func validateCustomStreamingProbe(runtimeMode, bodyMode string, body map[string]any) error {
+	if runtimeMode != ChannelMonitorModeCustom {
+		return nil
+	}
+	return rejectNonStreamingCustomReplace(bodyMode, body)
+}
+
+func rejectNonStreamingCustomReplace(bodyMode string, body map[string]any) error {
+	if defaultBodyMode(bodyMode) != MonitorBodyOverrideModeReplace || body == nil {
+		return nil
+	}
+	explicit, ok := body["stream"].(bool)
+	if ok && !explicit {
+		return ErrChannelMonitorCustomStreamRequired
+	}
+	return nil
+}
+
 func validateCustomOverride(cfg ChannelMonitorCustomConfig, ov *ChannelMonitorCustomOverride) error {
 	if ov == nil || customOverrideIsEmpty(ov) {
 		return nil

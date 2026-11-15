@@ -349,9 +349,12 @@ func TestRunCustomCheck_DeadlineAborts(t *testing.T) {
 }
 
 func TestApplyCustomStream_GeminiDropsLocalStreamField(t *testing.T) {
-	body, streaming, err := applyCustomStream(MonitorProviderGemini, MonitorBodyOverrideModeReplace, []byte(`{"stream":false,"contents":[{"parts":[{"text":"ping"}]}]}`))
+	_, _, err := applyCustomStream(MonitorProviderGemini, MonitorBodyOverrideModeReplace, []byte(`{"stream":false,"contents":[{"parts":[{"text":"ping"}]}]}`))
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+
+	body, streaming, err := applyCustomStream(MonitorProviderGemini, MonitorBodyOverrideModeReplace, []byte(`{"stream":true,"contents":[{"parts":[{"text":"ping"}]}]}`))
 	require.NoError(t, err)
-	require.False(t, streaming)
+	require.True(t, streaming)
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(body, &payload))
 	_, exists := payload["stream"]
@@ -364,15 +367,52 @@ func TestApplyCustomStream_GeminiDropsLocalStreamField(t *testing.T) {
 	require.Equal(t, `{"contents":[{"parts":[{"text":"ping"}]}]}`, string(body))
 }
 
-func TestApplyCustomStream_ReplaceHonorsFalse(t *testing.T) {
-	body, streaming, err := applyCustomStream(MonitorProviderOpenAI, MonitorBodyOverrideModeReplace, []byte(`{"stream":false,"messages":[{"role":"user","content":"ping"}]}`))
+func TestApplyCustomStream_ReplaceRejectsFalseAndKeepsOtherOverrides(t *testing.T) {
+	_, _, err := applyCustomStream(MonitorProviderOpenAI, MonitorBodyOverrideModeReplace, []byte(`{"stream":false,"messages":[{"role":"user","content":"ping"}]}`))
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+
+	body, streaming, err := applyCustomStream(MonitorProviderOpenAI, MonitorBodyOverrideModeMerge, []byte(`{"stream":false,"max_tokens":20}`))
 	require.NoError(t, err)
-	require.False(t, streaming)
-	require.Contains(t, string(body), `"stream":false`)
+	require.True(t, streaming)
+	require.Contains(t, string(body), `"max_tokens":20`)
+	require.Contains(t, string(body), `"stream":true`)
 
 	_, streaming, err = applyCustomStream(MonitorProviderOpenAI, MonitorBodyOverrideModeOff, []byte(`{"stream":false,"messages":[]}`))
 	require.NoError(t, err)
 	require.True(t, streaming)
+}
+
+func TestRunCustomCheck_RejectsNonStreamingReplaceBeforeRequest(t *testing.T) {
+	orig := customMonitorHTTPClient
+	customMonitorHTTPClient = &http.Client{}
+	t.Cleanup(func() { customMonitorHTTPClient = orig })
+
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	t.Cleanup(server.Close)
+
+	res := runCustomCheckForModel(t.Context(), customProbeInput{
+		Provider: MonitorProviderOpenAI,
+		Endpoint: server.URL,
+		APIKey:   "secret-key",
+		Model:    "m",
+		Opts: &CheckOptions{
+			BodyOverrideMode: MonitorBodyOverrideModeReplace,
+			BodyOverride: map[string]any{
+				"stream":   false,
+				"messages": []any{map[string]any{"role": "user", "content": "ping"}},
+			},
+		},
+		Config: defaultChannelMonitorCustomConfig(),
+	})
+	require.False(t, called)
+	require.Equal(t, MonitorStatusError, res.Status)
+	require.Contains(t, res.Message, "streaming request")
+	require.Nil(t, res.LatencyMs)
+	require.Nil(t, res.TokensPerSec)
+	require.NotContains(t, res.Message, "secret-key")
 }
 
 func contextWithTimeout(t *testing.T, d time.Duration) (context.Context, context.CancelFunc) {
