@@ -140,6 +140,8 @@ func (s *ChannelMonitorService) attachCustomOverrides(ctx context.Context, monit
 
 type scheduledProbeKey struct{}
 
+type scheduledLifecycleKey struct{}
+
 func withScheduledProbe(ctx context.Context) context.Context {
 	return context.WithValue(ctx, scheduledProbeKey{}, true)
 }
@@ -149,11 +151,31 @@ func isScheduledProbe(ctx context.Context) bool {
 	return scheduled
 }
 
+// withScheduledLifecycle 记下 Stop 和 Unschedule 的取消信号。
+// 检测期限可以长过 runOne 的短超时，但这个信号仍然有效。
+func withScheduledLifecycle(ctx, lifecycle context.Context) context.Context {
+	if lifecycle == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, scheduledLifecycleKey{}, lifecycle)
+}
+
+// scheduledProbeBase 优先使用调度生命周期。没有单独记下时，才脱离父上下文的短超时。
+func scheduledProbeBase(parent context.Context) context.Context {
+	if parent == nil {
+		return context.Background()
+	}
+	if life, ok := parent.Value(scheduledLifecycleKey{}).(context.Context); ok && life != nil {
+		return life
+	}
+	return context.WithoutCancel(parent)
+}
+
 // scheduledCustomContext 给调度检测一段能盖住 ping、红色阈值和写库余量的期限。
-// 它脱离调度器的短超时，但模型请求仍由红色阈值单独截止。
+// 模型请求仍由红色阈值单独截止。已记下的停止信号会取消这段期限。
 func scheduledCustomContext(parent context.Context, red time.Duration) (context.Context, context.CancelFunc) {
 	budget := red + monitorPingTimeout + monitorRunOneBuffer
-	return context.WithTimeout(context.WithoutCancel(parent), budget)
+	return context.WithTimeout(scheduledProbeBase(parent), budget)
 }
 
 // customModelContext 在 ping 结束后按红色阈值计时，并继续响应父上下文的取消。
@@ -168,7 +190,7 @@ func quotaFetchContext(parent context.Context, mode string) (context.Context, co
 	if mode != ChannelMonitorModeCustom || !isScheduledProbe(parent) {
 		return parent, func() {}
 	}
-	return context.WithTimeout(context.WithoutCancel(parent), monitorQuotaFetchTimeout)
+	return context.WithTimeout(scheduledProbeBase(parent), monitorQuotaFetchTimeout)
 }
 
 // historyWriteContext 让 Custom 的写库不受调度器短超时影响。V1 仍使用原上下文。

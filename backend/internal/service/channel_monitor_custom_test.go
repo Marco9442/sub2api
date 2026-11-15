@@ -22,8 +22,11 @@ func TestCustomModelContext_ManualCancelPropagates(t *testing.T) {
 }
 
 func TestScheduledCustomContext_OutlivesShortParent(t *testing.T) {
-	parent, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	life, stopLife := context.WithCancel(context.Background())
+	defer stopLife()
+	parent, cancel := context.WithTimeout(life, 15*time.Millisecond)
 	defer cancel()
+	parent = withScheduledLifecycle(withScheduledProbe(parent), life)
 	exec, stop := scheduledCustomContext(parent, 2*time.Second)
 	defer stop()
 	time.Sleep(30 * time.Millisecond)
@@ -34,6 +37,9 @@ func TestScheduledCustomContext_OutlivesShortParent(t *testing.T) {
 	deadline, ok := model.Deadline()
 	require.True(t, ok)
 	require.Greater(t, time.Until(deadline), time.Second)
+
+	stopLife()
+	require.ErrorIs(t, model.Err(), context.Canceled)
 }
 
 type blockUntilCancel struct {
@@ -44,6 +50,35 @@ func (b blockUntilCancel) RoundTrip(r *http.Request) (*http.Response, error) {
 	close(b.started)
 	<-r.Context().Done()
 	return nil, r.Context().Err()
+}
+
+func TestRunCustomChecks_ScheduledStopAbortsUpstream(t *testing.T) {
+	started := make(chan struct{})
+	orig := customMonitorHTTPClient
+	customMonitorHTTPClient = &http.Client{Transport: blockUntilCancel{started: started}}
+	t.Cleanup(func() { customMonitorHTTPClient = orig })
+
+	life, stopLife := context.WithCancel(context.Background())
+	parent := withScheduledLifecycle(withScheduledProbe(life), life)
+	svc := NewChannelMonitorService(&historyCaptureRepo{}, &duplicateChannelMonitorEncryptor{})
+	done := make(chan struct{})
+	go func() {
+		_ = svc.runCustomChecks(parent, &ChannelMonitor{
+			ID: 1, Provider: MonitorProviderOpenAI, Endpoint: "http://127.0.0.1:9", APIKey: "k", PrimaryModel: "m",
+		})
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	stopLife()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopping the runner left the custom check running")
+	}
 }
 
 func TestRunCustomChecks_ManualCancelStopsUpstream(t *testing.T) {
@@ -102,9 +137,12 @@ func newCustomQuotaProbeService(mode string) *ChannelMonitorService {
 
 func TestRunCheck_ScheduledCustomQuotaSurvivesExpiredParent(t *testing.T) {
 	svc := newCustomQuotaProbeService(ChannelMonitorModeCustom)
-	parent, cancel := context.WithCancel(context.Background())
-	parent = withScheduledProbe(parent)
-	cancel()
+	life, stopLife := context.WithCancel(context.Background())
+	defer stopLife()
+	parent, cancel := context.WithTimeout(life, time.Millisecond)
+	defer cancel()
+	time.Sleep(5 * time.Millisecond)
+	parent = withScheduledLifecycle(withScheduledProbe(parent), life)
 
 	results, err := svc.RunCheck(parent, 4)
 	require.NoError(t, err)
