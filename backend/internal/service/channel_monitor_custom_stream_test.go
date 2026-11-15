@@ -89,6 +89,116 @@ func TestConsumeMonitorSSE_TruncatedFrameIsNotSuccess(t *testing.T) {
 	require.Contains(t, reason, "truncated")
 }
 
+func TestConsumeMonitorSSE_AnthropicStartTextCounts(t *testing.T) {
+	startOnly := strings.Join([]string{
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
+		"",
+	}, "\n")
+	_, text, completed, failed, reason := consumeMonitorSSE(strings.NewReader(startOnly), anthropicStreamProtocol, time.Now())
+	require.Equal(t, "hello", text)
+	require.True(t, completed)
+	require.False(t, failed)
+	require.Empty(t, reason)
+
+	cleanEOF := strings.Join([]string{
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+		"",
+	}, "\n")
+	_, text, completed, failed, reason = consumeMonitorSSE(strings.NewReader(cleanEOF), anthropicStreamProtocol, time.Now())
+	require.Equal(t, "hello", text)
+	require.True(t, completed)
+	require.False(t, failed)
+	require.Empty(t, reason)
+}
+
+func TestConsumeMonitorSSE_AnthropicStartTextSetsTTFTBeforeDelta(t *testing.T) {
+	// 起始事件必须以空行结束。bufio 会提前读，中间插入 EOF 会把后续帧拼进同一事件。
+	head := strings.Join([]string{
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hi"}}`,
+		"",
+		"",
+	}, "\n")
+	tail := strings.Join([]string{
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"there"}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
+		"",
+	}, "\n")
+	delay := 150 * time.Millisecond
+	pr, pw := io.Pipe()
+	t.Cleanup(func() {
+		_ = pr.Close()
+		_ = pw.Close()
+	})
+	go func() {
+		defer pw.Close()
+		if _, err := io.WriteString(pw, head); err != nil {
+			return
+		}
+		time.Sleep(delay)
+		_, _ = io.WriteString(pw, tail)
+	}()
+	measured, text, completed, failed, reason := consumeMonitorSSE(pr, anthropicStreamProtocol, time.Now())
+	require.Equal(t, "hithere", text, reason)
+	require.True(t, completed)
+	require.False(t, failed)
+	require.Less(t, measured, delay)
+}
+
+func TestConsumeMonitorSSE_AnthropicStartIgnoresNonTextAndEmpty(t *testing.T) {
+	toolOnly := strings.Join([]string{
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
+		"",
+	}, "\n")
+	_, text, completed, failed, _ := consumeMonitorSSE(strings.NewReader(toolOnly), anthropicStreamProtocol, time.Now())
+	require.Empty(t, text)
+	require.False(t, completed)
+	require.False(t, failed)
+
+	emptyThenDelta := strings.Join([]string{
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"pong"}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
+		"",
+	}, "\n")
+	_, text, completed, failed, _ = consumeMonitorSSE(strings.NewReader(emptyThenDelta), anthropicStreamProtocol, time.Now())
+	require.Equal(t, "pong", text)
+	require.True(t, completed)
+	require.False(t, failed)
+}
+
+func TestConsumeMonitorSSE_AnthropicTruncatedAfterStartTextIsNotSuccess(t *testing.T) {
+	raw := strings.Join([]string{
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"x"}}`,
+	}, "\n")
+	_, text, completed, failed, reason := consumeMonitorSSE(strings.NewReader(raw), anthropicStreamProtocol, time.Now())
+	require.Equal(t, "hello", text)
+	require.False(t, completed)
+	require.True(t, failed)
+	require.Contains(t, reason, "truncated")
+}
+
 func TestConsumeMonitorSSE_SizeLimitIsNotSuccess(t *testing.T) {
 	raw := "data: " + strings.Repeat("a", monitorResponseMaxBytes) + "\n\n"
 	_, _, completed, failed, reason := consumeMonitorSSE(strings.NewReader(raw), openAIChatStreamProtocol, time.Now())

@@ -300,10 +300,18 @@ func sseEventKind(event, data string) string {
 
 var anthropicStreamProtocol = monitorStreamProtocol{
 	text: func(event, data string) string {
-		if sseEventKind(event, data) != "content_block_delta" {
+		switch sseEventKind(event, data) {
+		case "content_block_delta":
+			return gjson.Get(data, "delta.text").String()
+		case "content_block_start":
+			// 起始块里的文本也是有效文本，TTFT 从第一段非空文本起算。
+			if gjson.Get(data, "content_block.type").String() != "text" {
+				return ""
+			}
+			return gjson.Get(data, "content_block.text").String()
+		default:
 			return ""
 		}
-		return gjson.Get(data, "delta.text").String()
 	},
 	done: func(event, data string) bool {
 		return sseEventKind(event, data) == "message_stop"
