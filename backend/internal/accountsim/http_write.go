@@ -528,7 +528,7 @@ func (h *Handler) bulkUpdate(c *gin.Context, _ params) {
 				results = append(results, gin.H{"account_id": id, "success": false, "error": errAccountNotFound.Error()})
 				continue
 			}
-			req.updateRequest.apply(a, v.state, v.now)
+			req.apply(a, v.state, v.now)
 			success = append(success, id)
 			results = append(results, gin.H{"account_id": id, "success": true})
 		}

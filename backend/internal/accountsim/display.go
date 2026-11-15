@@ -290,10 +290,10 @@ func usageInfo(a *Account, now time.Time) *service.UsageInfo {
 	info := &service.UsageInfo{}
 	five := windowProgress(a.Window5h, window5h, prof.Cap5h, now, rate)
 	seven := windowProgress(a.Window7d, window7d, prof.Cap7d, now, rate)
-	switch {
-	case a.Platform == "gemini":
+	switch a.Platform {
+	case "gemini":
 		info.GeminiSharedDaily = dayProgress(a, now, prof.CapDaily, rate)
-	case a.Platform == "antigravity":
+	case "antigravity":
 		info.FiveHour = five
 		info.AntigravityQuotaGroups = []*service.AntigravityQuotaGroup{{
 			Key:  "gemini",
@@ -303,7 +303,7 @@ func usageInfo(a *Account, now time.Time) *service.UsageInfo {
 				{Window: "weekly", Utilization: utilPercent(a.Window7d.Cost, prof.Cap7d), ResetsAt: resetAt(a.Window7d.Start, window7d, now)},
 			},
 		}}
-	case a.Platform == "grok":
+	case "grok":
 		pct := utilPercent(a.Window7d.Cost, prof.Cap7d)
 		info.GrokBilling = &xai.BillingSummary{
 			PeriodType:   "weekly",

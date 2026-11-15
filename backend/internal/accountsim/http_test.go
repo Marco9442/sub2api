@@ -118,7 +118,7 @@ func listIDs(t *testing.T, router *gin.Engine, query string) []int64 {
 	page := decode[listPage](t, resp.Data)
 	ids := make([]int64, 0, len(page.Items))
 	for _, item := range page.Items {
-		ids = append(ids, int64(item["id"].(float64)))
+		ids = append(ids, int64(asFloat(t, item["id"])))
 	}
 	return ids
 }
@@ -171,6 +171,24 @@ func TestListFiltersAndSortsLikeRealList(t *testing.T) {
 	}
 }
 
+func asMap(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("期望对象，实际 %T", v)
+	}
+	return m
+}
+
+func asFloat(t *testing.T, v any) float64 {
+	t.Helper()
+	n, ok := v.(float64)
+	if !ok {
+		t.Fatalf("期望数字，实际 %T", v)
+	}
+	return n
+}
+
 func equalIDs(a, b []int64) bool {
 	if len(a) != len(b) {
 		return false
@@ -213,7 +231,7 @@ func TestGroupsAndProxiesAll(t *testing.T) {
 
 	_, resp = call(t, router, http.MethodGet, "/proxies/all?with_count=true", "")
 	proxies := decode[[]map[string]any](t, resp.Data)
-	if len(proxies) != 1 || proxies[0]["account_count"].(float64) != 3 {
+	if len(proxies) != 1 || asFloat(t, proxies[0]["account_count"]) != 3 {
 		t.Fatalf("代理账号数不符: %v", proxies)
 	}
 }
@@ -230,22 +248,22 @@ func TestDisplayFieldsMatchPageContract(t *testing.T) {
 	page := decode[listPage](t, resp.Data)
 	byID := map[int64]map[string]any{}
 	for _, item := range page.Items {
-		byID[int64(item["id"].(float64))] = item
+		byID[int64(asFloat(t, item["id"]))] = item
 	}
 
-	cred := byID[6601]["credentials"].(map[string]any)
+	cred := asMap(t, byID[6601]["credentials"])
 	if cred["plan_type"] != "team" || cred["email"] != "cedar.nova12@gmail.com" {
 		t.Fatalf("手动 plan_type 应覆盖展示值，并保留邮箱: %v", cred)
 	}
-	openai := byID[6602]["credentials"].(map[string]any)
+	openai := asMap(t, byID[6602]["credentials"])
 	if openai["plan_type"] != "plus" || openai["auth_mode"] != "chatgpt" || openai["email"] != "amber.tide7@outlook.com" {
 		t.Fatalf("openai 展示凭据不符: %v", openai)
 	}
-	deepseek := byID[6603]["credentials"].(map[string]any)
+	deepseek := asMap(t, byID[6603]["credentials"])
 	if deepseek["base_url"] != "https://api.deepseek.com" || deepseek["account_mode"] != "payg" {
 		t.Fatalf("deepseek 展示凭据不符: %v", deepseek)
 	}
-	extra := byID[6603]["extra"].(map[string]any)
+	extra := asMap(t, byID[6603]["extra"])
 	balances, _ := extra["deepseek_balances"].([]any)
 	if len(balances) != 2 {
 		t.Fatalf("deepseek 应有人民币和美元余额: %v", extra)
@@ -261,32 +279,32 @@ func TestUsageAndTodayStatsShapes(t *testing.T) {
 		t.Fatalf("用量批量失败: %d %+v", status, resp)
 	}
 	body := decode[map[string]any](t, resp.Data)
-	usage := body["usage"].(map[string]any)
+	usage := asMap(t, body["usage"])
 	if _, ok := body["errors"].(map[string]any); !ok {
 		t.Fatalf("用量响应应包含 errors: %v", body)
 	}
-	claude := usage["6601"].(map[string]any)
-	five := claude["five_hour"].(map[string]any)
-	if five["utilization"].(float64) != 20 {
+	claude := asMap(t, usage["6601"])
+	five := asMap(t, claude["five_hour"])
+	if asFloat(t, five["utilization"]) != 20 {
 		t.Fatalf("5 小时用量应为 20%%: %v", five)
 	}
 	if claude["seven_day"] == nil {
 		t.Fatalf("anthropic 应包含 seven_day")
 	}
-	if _, ok := usage["6602"].(map[string]any)["five_hour"].(map[string]any); !ok {
+	if _, ok := asMap(t, usage["6602"])["five_hour"].(map[string]any); !ok {
 		t.Fatalf("openai 应包含 five_hour 对象")
 	}
 
 	status, resp = call(t, router, http.MethodPost, "/accounts/today-stats/batch", `{"account_ids":[6601]}`)
 	statsBody := decode[map[string]any](t, resp.Data)
-	stats := statsBody["stats"].(map[string]any)["6601"].(map[string]any)
-	if status != http.StatusOK || stats["requests"].(float64) != 40 {
+	stats := asMap(t, asMap(t, statsBody["stats"])["6601"])
+	if status != http.StatusOK || asFloat(t, stats["requests"]) != 40 {
 		t.Fatalf("今日统计不符: %d %v", status, stats)
 	}
 
 	status, resp = call(t, router, http.MethodGet, "/accounts/upstream-billing-probe/settings", "")
 	settings := decode[map[string]any](t, resp.Data)
-	if status != http.StatusOK || settings["enabled"] != false || settings["interval_minutes"].(float64) != 60 {
+	if status != http.StatusOK || settings["enabled"] != false || asFloat(t, settings["interval_minutes"]) != 60 {
 		t.Fatalf("探测设置不符: %d %v", status, settings)
 	}
 }
@@ -309,7 +327,7 @@ func TestUsageInfoCoversVisiblePlatforms(t *testing.T) {
 		t.Fatalf("antigravity 额度组不符: %+v", groups)
 	}
 	extra := displayExtra(&Account{Platform: "antigravity", Type: "oauth", Tier: "ultra", Name: "a.b1@gmail.com"}, now)
-	paid := extra["load_code_assist"].(map[string]any)["paidTier"].(map[string]any)
+	paid := asMap(t, asMap(t, extra["load_code_assist"])["paidTier"])
 	if paid["id"] != "g1-ultra-tier" {
 		t.Fatalf("antigravity 等级不符: %v", extra)
 	}

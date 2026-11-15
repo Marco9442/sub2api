@@ -49,10 +49,6 @@ func (r *rng) float() float64 {
 	return float64(r.next()>>11) / float64(1<<53)
 }
 
-func (r *rng) chance(perMille int) bool {
-	return r.intn(1000) < perMille
-}
-
 // pick 按权重选一个键。键按字典序遍历，结果不受 map 顺序影响。
 func (r *rng) pick(weights map[string]int) string {
 	keys := make([]string, 0, len(weights))
