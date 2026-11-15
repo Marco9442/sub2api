@@ -161,6 +161,16 @@ func customModelContext(parent context.Context, red time.Duration) (context.Cont
 	return context.WithTimeout(parent, red)
 }
 
+// quotaFetchContext 只给调度中的 Custom 检测一段独立的配额等待时间。
+// 模型检测可以长过调度器的 63 秒，之后原上下文已经取消；配额抓取本身有自己的超时。
+// 手动检测和 V1 继续跟随调用方。
+func quotaFetchContext(parent context.Context, mode string) (context.Context, context.CancelFunc) {
+	if mode != ChannelMonitorModeCustom || !isScheduledProbe(parent) {
+		return parent, func() {}
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), monitorQuotaFetchTimeout)
+}
+
 // historyWriteContext 让 Custom 的写库不受调度器短超时影响。V1 仍使用原上下文。
 func historyWriteContext(parent context.Context, mode string) (context.Context, context.CancelFunc) {
 	if mode != ChannelMonitorModeCustom {

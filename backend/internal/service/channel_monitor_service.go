@@ -663,7 +663,9 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 		results = s.runQuotaOnlyCheck(ctx, m)
 	case MonitorCheckModeQuotaProbe:
 		results = s.runModelChecks(ctx, m)
-		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(ctx, m))
+		quotaCtx, cancelQuota := quotaFetchContext(ctx, rt.Mode)
+		defer cancelQuota()
+		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(quotaCtx, m))
 	default:
 		results = s.runModelChecks(ctx, m)
 	}

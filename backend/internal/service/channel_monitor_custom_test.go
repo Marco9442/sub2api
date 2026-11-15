@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,6 +72,73 @@ func TestRunCustomChecks_ManualCancelStopsUpstream(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("manual cancel left the custom check running")
 	}
+}
+
+func newCustomQuotaProbeService(mode string) *ChannelMonitorService {
+	repo := &quotaModeRepoStub{monitor: &ChannelMonitor{
+		ID:              4,
+		Provider:        MonitorProviderOpenAI,
+		APIMode:         MonitorAPIModeChatCompletions,
+		Endpoint:        "http://127.0.0.1:9",
+		APIKey:          "OLD:sk-openai",
+		PrimaryModel:    "gpt-test",
+		Enabled:         true,
+		IntervalSeconds: 120,
+		CheckMode:       MonitorCheckModeQuotaProbe,
+		AccountID:       int64Ptr(12),
+	}}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{
+		Enabled: true,
+		Mode:    mode,
+	}})
+	svc.SetQuotaFetcher(newQuotaModeFetcher(map[int64]*Account{
+		12: {ID: 12, Platform: domain.PlatformOpenAI},
+	}, &stubMonitorUsageSource{usage: &UsageInfo{
+		FiveHour: &UsageProgress{Utilization: 20},
+	}}))
+	return svc
+}
+
+func TestRunCheck_ScheduledCustomQuotaSurvivesExpiredParent(t *testing.T) {
+	svc := newCustomQuotaProbeService(ChannelMonitorModeCustom)
+	parent, cancel := context.WithCancel(context.Background())
+	parent = withScheduledProbe(parent)
+	cancel()
+
+	results, err := svc.RunCheck(parent, 4)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	require.NotNil(t, results[0].Quota)
+	require.True(t, results[0].Quota.Success)
+	require.NotContains(t, results[0].Quota.Error, "context canceled")
+}
+
+func TestRunCheck_ManualCustomQuotaFollowsCallerCancel(t *testing.T) {
+	svc := newCustomQuotaProbeService(ChannelMonitorModeCustom)
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	results, err := svc.RunCheck(parent, 4)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	require.NotNil(t, results[0].Quota)
+	require.False(t, results[0].Quota.Success)
+	require.Contains(t, results[0].Quota.Error, "context canceled")
+}
+
+func TestRunCheck_ScheduledV1QuotaFollowsParent(t *testing.T) {
+	svc := newCustomQuotaProbeService(ChannelMonitorModeV1)
+	parent, cancel := context.WithCancel(context.Background())
+	parent = withScheduledProbe(parent)
+	cancel()
+
+	results, err := svc.RunCheck(parent, 4)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	require.NotNil(t, results[0].Quota)
+	require.False(t, results[0].Quota.Success)
+	require.Contains(t, results[0].Quota.Error, "context canceled")
 }
 
 func TestHistoryWriteContext_V1FollowsParent(t *testing.T) {
