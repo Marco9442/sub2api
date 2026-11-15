@@ -662,12 +662,12 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	case MonitorCheckModeQuota:
 		results = s.runQuotaOnlyCheck(ctx, m)
 	case MonitorCheckModeQuotaProbe:
-		results = s.runModelChecks(ctx, m)
+		results = s.runModelChecks(ctx, rt.Mode, m)
 		quotaCtx, cancelQuota := quotaFetchContext(ctx, rt.Mode)
 		defer cancelQuota()
 		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(quotaCtx, m))
 	default:
-		results = s.runModelChecks(ctx, m)
+		results = s.runModelChecks(ctx, rt.Mode, m)
 	}
 	s.persistCheckResults(ctx, rt.Mode, m, results)
 	for _, r := range results {
@@ -676,8 +676,8 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	return results, nil
 }
 
-func (s *ChannelMonitorService) runModelChecks(ctx context.Context, m *ChannelMonitor) []*CheckResult {
-	if s.probeRuntime(ctx).Mode == ChannelMonitorModeCustom {
+func (s *ChannelMonitorService) runModelChecks(ctx context.Context, mode string, m *ChannelMonitor) []*CheckResult {
+	if mode == ChannelMonitorModeCustom {
 		return s.runCustomChecks(ctx, m)
 	}
 	return s.runChecksConcurrent(ctx, m)

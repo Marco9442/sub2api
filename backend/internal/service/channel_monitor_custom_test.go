@@ -135,6 +135,37 @@ func newCustomQuotaProbeService(mode string) *ChannelMonitorService {
 	return svc
 }
 
+type flippingMonitorRuntime struct {
+	calls int
+}
+
+func (f *flippingMonitorRuntime) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
+	f.calls++
+	mode := ChannelMonitorModeCustom
+	if f.calls > 1 {
+		mode = ChannelMonitorModeV1
+	}
+	return ChannelMonitorRuntime{Enabled: true, Mode: mode}
+}
+
+func TestRunCheck_UsesModeSnapshotForDispatch(t *testing.T) {
+	repo := &quotaModeRepoStub{monitor: &ChannelMonitor{
+		ID: 8, Provider: MonitorProviderOpenAI, APIMode: MonitorAPIModeChatCompletions,
+		Endpoint: "http://127.0.0.1:9", APIKey: "OLD:sk-openai", PrimaryModel: "gpt-test",
+		Enabled: true, IntervalSeconds: 120, CheckMode: MonitorCheckModeProbe,
+	}}
+	settings := &flippingMonitorRuntime{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	results, err := svc.RunCheck(context.Background(), 8)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	require.Equal(t, MonitorMetricKindTTFT, results[0].MetricKind)
+	require.Equal(t, MonitorMetricKindTTFT, repo.history[0].MetricKind)
+	require.Equal(t, 1, settings.calls)
+}
+
 func TestRunCheck_ScheduledCustomQuotaSurvivesExpiredParent(t *testing.T) {
 	svc := newCustomQuotaProbeService(ChannelMonitorModeCustom)
 	life, stopLife := context.WithCancel(context.Background())
