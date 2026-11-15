@@ -218,7 +218,15 @@ func applyCustomStream(provider string, mode string, body []byte) ([]byte, bool,
 				streaming = false
 			}
 		}
-		return body, streaming, nil
+		if _, ok := payload["stream"]; !ok {
+			return body, streaming, nil
+		}
+		delete(payload, "stream")
+		out, err := json.Marshal(payload)
+		if err != nil {
+			return nil, false, err
+		}
+		return out, streaming, nil
 	}
 	streaming := true
 	if mode == MonitorBodyOverrideModeReplace {

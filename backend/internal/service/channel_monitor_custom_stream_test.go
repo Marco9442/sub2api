@@ -238,6 +238,22 @@ func TestRunCustomCheck_DeadlineAborts(t *testing.T) {
 	require.NotNil(t, res.LatencyMs)
 }
 
+func TestApplyCustomStream_GeminiDropsLocalStreamField(t *testing.T) {
+	body, streaming, err := applyCustomStream(MonitorProviderGemini, MonitorBodyOverrideModeReplace, []byte(`{"stream":false,"contents":[{"parts":[{"text":"ping"}]}]}`))
+	require.NoError(t, err)
+	require.False(t, streaming)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(body, &payload))
+	_, exists := payload["stream"]
+	require.False(t, exists)
+	require.Contains(t, string(body), "ping")
+
+	body, streaming, err = applyCustomStream(MonitorProviderGemini, MonitorBodyOverrideModeOff, []byte(`{"contents":[{"parts":[{"text":"ping"}]}]}`))
+	require.NoError(t, err)
+	require.True(t, streaming)
+	require.Equal(t, `{"contents":[{"parts":[{"text":"ping"}]}]}`, string(body))
+}
+
 func TestApplyCustomStream_ReplaceHonorsFalse(t *testing.T) {
 	body, streaming, err := applyCustomStream(MonitorProviderOpenAI, MonitorBodyOverrideModeReplace, []byte(`{"stream":false,"messages":[{"role":"user","content":"ping"}]}`))
 	require.NoError(t, err)
