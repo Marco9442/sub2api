@@ -132,6 +132,10 @@ func validateEndpoint(ep string) error {
 	if ep == "" {
 		return ErrChannelMonitorInvalidEndpoint
 	}
+	// 只放行去掉空白和末尾斜杠后恰好等于 http://127.0.0.1:8080 的地址。
+	if isExactLoopbackExceptionURL(ep) {
+		return nil
+	}
 	u, err := url.Parse(ep)
 	if err != nil {
 		return ErrChannelMonitorInvalidEndpoint

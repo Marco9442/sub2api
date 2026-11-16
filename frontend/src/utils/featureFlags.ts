@@ -71,6 +71,9 @@
 import { useAppStore } from '@/stores/app'
 import type { PublicSettings } from '@/types'
 import { DEFAULT_INTERVAL_SECONDS } from '@/constants/channelMonitor'
+import { normalizeChannelMonitorMode, type ChannelMonitorMode } from './channelMonitorMode'
+
+export type { ChannelMonitorMode }
 
 export type FeatureFlagMode = 'opt-in' | 'opt-out'
 
@@ -184,13 +187,10 @@ export function isChannelMonitorRouteEnabled(): boolean {
   return isFeatureFlagEnabled(FeatureFlags.channelMonitor)
 }
 
-export type ChannelMonitorMode = 'v1' | 'v2'
-
-/** Exclusive channel-monitor implementation. Invalid/missing → v1 (opt-in to v2). */
+/** Exclusive channel-monitor implementation. Invalid/missing → v1. */
 export function getChannelMonitorMode(): ChannelMonitorMode {
   const appStore = useAppStore()
-  const mode = appStore.cachedPublicSettings?.channel_monitor_mode
-  return mode === 'v2' ? 'v2' : 'v1'
+  return normalizeChannelMonitorMode(appStore.cachedPublicSettings?.channel_monitor_mode)
 }
 
 export function isChannelMonitorV1Mode(): boolean {
@@ -199,6 +199,16 @@ export function isChannelMonitorV1Mode(): boolean {
 
 export function isChannelMonitorV2Mode(): boolean {
   return isChannelMonitorRouteEnabled() && getChannelMonitorMode() === 'v2'
+}
+
+export function isChannelMonitorCustomMode(): boolean {
+  return isChannelMonitorRouteEnabled() && getChannelMonitorMode() === 'custom'
+}
+
+/** V1 与 Custom 都对用户开放主动检测结果。V2 仍走被动聚合。 */
+export function isChannelMonitorActiveMode(): boolean {
+  const mode = getChannelMonitorMode()
+  return isChannelMonitorRouteEnabled() && (mode === 'v1' || mode === 'custom')
 }
 
 export function getChannelMonitorRefreshIntervalSeconds(): number {

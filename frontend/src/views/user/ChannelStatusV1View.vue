@@ -6,6 +6,7 @@
       :window="currentWindow"
       :loading="loading"
       :auto-refresh="autoRefresh"
+      :windows="windows"
       @update:window="handleWindowChange"
       @refresh="refresh()"
     />
@@ -16,6 +17,7 @@
       :countdown-seconds="countdown"
       :loading="loading"
       :detail-cache="detailCache"
+      :metric="metric"
       @card-click="openDetail"
     />
 
@@ -23,6 +25,7 @@
       :show="showDetail"
       :monitor-id="detailTarget?.id ?? null"
       :title="detailTitle"
+      :metric="metric"
       @close="closeDetail"
     />
   </AppLayout>
@@ -46,8 +49,12 @@ import MonitorHero, {
 } from '@/components/user/monitor/MonitorHero.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
-import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+import { DEFAULT_INTERVAL_SECONDS } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import { legacyOverallStatus, overallMonitorStatus } from '@/utils/channelMonitorStatus'
+
+const props = withDefaults(defineProps<{ metric?: 'latency' | 'ttft' }>(), { metric: 'latency' })
+const metric = computed(() => props.metric)
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -56,6 +63,11 @@ const appStore = useAppStore()
 const items = ref<UserMonitorView[]>([])
 const loading = ref(false)
 const currentWindow = ref<MonitorWindow>('7d')
+// Custom 模式下由管理员配置的时间档；为空时沿用 7/15/30 天。
+const windows = ref<{ amount: number; unit: 'm' | 'd' }[]>([])
+const statusYellowPercent = ref(30)
+const statusRedPercent = ref(30)
+const customWindows = computed(() => metric.value === 'ttft')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
@@ -74,12 +86,9 @@ const countdown = autoRefresh.countdown
 
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
-  if (items.value.length === 0) return 'operational'
-  for (const it of items.value) {
-    if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
-    if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
-  }
-  return 'operational'
+  const statuses = items.value.map((it) => it.primary_status)
+  if (!customWindows.value) return legacyOverallStatus(statuses)
+  return overallMonitorStatus(statuses, statusYellowPercent.value, statusRedPercent.value)
 })
 
 const detailTitle = computed(() => {
@@ -93,9 +102,16 @@ async function reload(silent = false) {
   abortController = ctrl
   if (!silent) loading.value = true
   try {
-    const res = await listChannelMonitorViews({ signal: ctrl.signal })
+    const res = await listChannelMonitorViews({
+      signal: ctrl.signal,
+      window: customWindows.value ? currentWindow.value : undefined,
+    })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
+    windows.value = res.windows ?? []
+    statusYellowPercent.value = storedPercent(res.status_yellow_percent)
+    statusRedPercent.value = storedPercent(res.status_red_percent)
+    syncCustomWindow()
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
@@ -109,8 +125,20 @@ async function reload(silent = false) {
   }
 }
 
+// 所选档不在配置里时（首次进入或管理员改了配置），切到第一档，与后端回退一致。
+function storedPercent(value: number | undefined): number {
+  return typeof value === 'number' && value > 0 ? value : 30
+}
+
+function syncCustomWindow() {
+  if (!customWindows.value || windows.value.length === 0) return
+  const keys = windows.value.map((w) => `${w.amount}${w.unit}`)
+  if (!keys.includes(currentWindow.value)) currentWindow.value = keys[0]
+}
+
 async function refresh(silent = false) {
   await reload(silent)
+  if (customWindows.value) return
   // After base reload, refresh any cached detail records so non-7d availability
   // values stay in sync without forcing the user to switch tabs again.
   if (currentWindow.value !== '7d') {
@@ -128,13 +156,17 @@ async function loadDetail(id: number, force = false) {
 }
 
 async function ensureDetailsForWindow() {
-  if (currentWindow.value === '7d') return
+  if (customWindows.value || currentWindow.value === '7d') return
   await Promise.all(items.value.map(it => loadDetail(it.id)))
 }
 
 // ── Handlers ──
 async function handleWindowChange(value: MonitorWindow) {
   currentWindow.value = value
+  if (customWindows.value) {
+    await reload(true)
+    return
+  }
   await ensureDetailsForWindow()
 }
 

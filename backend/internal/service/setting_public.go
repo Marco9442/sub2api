@@ -390,16 +390,30 @@ const (
 	defaultChannelMonitorMode      = ChannelMonitorModeV1
 )
 
-// normalizeChannelMonitorMode accepts only v1/v2; empty/invalid → v1 (safe default).
+// normalizeChannelMonitorMode accepts v1/v2/custom; empty/invalid → v1.
 func normalizeChannelMonitorMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case ChannelMonitorModeV1, "":
-		return ChannelMonitorModeV1
 	case ChannelMonitorModeV2:
 		return ChannelMonitorModeV2
+	case ChannelMonitorModeCustom:
+		return ChannelMonitorModeCustom
+	case ChannelMonitorModeV1, "":
+		return ChannelMonitorModeV1
 	default:
 		return defaultChannelMonitorMode
 	}
+}
+
+// RejectEnteringCustomFromSettings 拒绝从非 Custom 经通用设置进入 Custom。
+// 已经生效时允许原样保存。离开 Custom 仍走这里。进入 Custom 只走渠道监控页。
+func RejectEnteringCustomFromSettings(previous, requested string) error {
+	if normalizeChannelMonitorMode(requested) != ChannelMonitorModeCustom {
+		return nil
+	}
+	if normalizeChannelMonitorMode(previous) == ChannelMonitorModeCustom {
+		return nil
+	}
+	return ErrChannelMonitorCustomModeStale
 }
 
 // parseChannelMonitorInterval parses the stored string and clamps to [15, 3600].
@@ -430,7 +444,7 @@ func clampChannelMonitorInterval(v int) int {
 // consumed by the runner, V2 aggregator, and user-facing handlers.
 type ChannelMonitorRuntime struct {
 	Enabled                bool
-	Mode                   string // ChannelMonitorModeV1 or ChannelMonitorModeV2
+	Mode                   string // v1, v2, or custom
 	DefaultIntervalSeconds int
 	// HideThroughput: when true, user-facing V2 APIs omit RPM/TPM scale signals.
 	HideThroughput bool
@@ -443,9 +457,10 @@ type ChannelMonitorRuntime struct {
 	HideUserRanking bool
 }
 
-// ActiveProbesAllowed reports whether V1 active provider probes may run.
+// ActiveProbesAllowed reports whether active provider probes may run.
+// V1 and Custom both probe. V2 stays passive.
 func (r ChannelMonitorRuntime) ActiveProbesAllowed() bool {
-	return r.Enabled && r.Mode == ChannelMonitorModeV1
+	return r.Enabled && (r.Mode == ChannelMonitorModeV1 || r.Mode == ChannelMonitorModeCustom)
 }
 
 // PassiveAggregationAllowed reports whether V2 passive aggregation may run.

@@ -1,6 +1,7 @@
 <template>
   <div class="mt-5 grid grid-cols-2 gap-2">
     <div
+      data-testid="metric-primary"
       class="rounded-xl p-3 bg-gray-50/80 dark:bg-dark-900/40 border border-gray-100 dark:border-dark-700/50"
     >
       <div
@@ -11,6 +12,13 @@
       </div>
       <div class="mt-1.5 text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
         {{ primaryValue }}<span class="text-xs font-normal text-gray-400 ml-0.5">{{ primaryUnit }}</span>
+      </div>
+      <div
+        v-if="primaryNote"
+        data-testid="metric-primary-note"
+        class="mt-0.5 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+      >
+        {{ primaryNote }}
       </div>
     </div>
     <div
@@ -37,6 +45,8 @@ defineProps<{
   primaryValue: string
   primaryUnit: string
   primaryIcon: 'bolt' | 'globe' | 'clock' | 'link'
+  /** 主指标下方的附注，例如 TTFT 对应的 token/s */
+  primaryNote?: string
   secondaryLabel: string
   secondaryValue: string
   secondaryUnit: string

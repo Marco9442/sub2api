@@ -115,6 +115,35 @@ describe('MonitorQuotaView', () => {
     expect(error.attributes('title')).toBe(longError)
   })
 
+  it('shows nothing on the user page when the quota fetch failed', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: {
+        concealError: true,
+        snapshot: makeSnapshot({ success: false, error: 'Authentication failed (HTTP 401)' }),
+      },
+    })
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="monitor-quota-error"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Authentication failed')
+    expect(wrapper.text()).not.toContain('monitorCommon.quota.unavailable')
+  })
+
+  it('keeps a plan badge on the user page without the failure text', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: {
+        concealError: true,
+        snapshot: makeSnapshot({
+          success: false,
+          plan_level: 'Max20',
+          error: 'Authentication failed (HTTP 401)',
+        }),
+      },
+    })
+    expect(wrapper.text()).toContain('Max20')
+    expect(wrapper.find('[data-testid="monitor-quota-error"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Authentication failed')
+  })
+
   it('keeps failed snapshots from rendering tier rows', () => {
     const wrapper = mount(MonitorQuotaView, {
       props: {

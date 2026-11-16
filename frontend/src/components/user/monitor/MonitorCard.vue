@@ -46,9 +46,10 @@
     <!-- Metrics -->
     <MonitorMetricPair
       primary-icon="bolt"
-      :primary-label="t('monitorCommon.dialogLatency')"
-      :primary-value="formatLatency(item.primary_latency_ms)"
-      primary-unit="ms"
+      :primary-label="primaryMetricLabel"
+      :primary-value="primaryMetricValue"
+      :primary-unit="primaryMetricUnit"
+      :primary-note="tokenRateNote"
       secondary-icon="globe"
       :secondary-label="t('monitorCommon.endpointPing')"
       :secondary-value="formatLatency(item.primary_ping_latency_ms)"
@@ -56,7 +57,7 @@
     />
 
     <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
-    <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" class="mt-2" />
+    <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" conceal-error class="mt-2" />
 
     <!-- Divider -->
     <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
@@ -80,11 +81,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView } from '@/api/channelMonitor'
+import { windowLabel } from '@/utils/channelMonitorCustom'
 import {
   useChannelMonitorFormat,
   providerGradient,
 } from '@/composables/useChannelMonitorFormat'
 import { isChannelMonitorQuotaVisible } from '@/utils/featureFlags'
+import { resolveMonitorMetricKind, tokenRateDisplay } from '@/utils/channelMonitorMetric'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
@@ -104,18 +107,19 @@ const PROVIDER_TINT: Record<string, string> = {
   opencode_go: 'text-amber-700 dark:text-amber-300',
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   item: UserMonitorView
-  window: '7d' | '15d' | '30d'
+  window: string
   availabilityValue: number | null
   countdownSeconds: number
-}>()
+  metric?: 'latency' | 'ttft'
+}>(), { metric: 'latency' })
 
 const emit = defineEmits<{
   (e: 'click'): void
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const {
   statusLabel,
   statusBadgeClass,
@@ -129,12 +133,36 @@ const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
 )
 
+const rowKind = computed(() => resolveMonitorMetricKind(props.item.primary_metric_kind, props.metric))
+const tokenRateNote = computed(() => {
+  const display = tokenRateDisplay(rowKind.value, props.item.primary_latency_ms, props.item.primary_tokens_per_sec)
+  if (display === 'omit') return undefined
+  const value = display === 'hidden' ? t('channelMonitorCustom.hidden') : props.item.primary_tokens_per_sec?.toFixed(3)
+  return `${value} ${t('channelMonitorCustom.tokensPerSec')}`
+})
+const primaryMetricLabel = computed(() => {
+  if (rowKind.value === 'ttft') return t('channelMonitorCustom.ttft')
+  if (rowKind.value === 'quota') return t('channelMonitorCustom.quota')
+  return t('monitorCommon.dialogLatency')
+})
+const primaryMetricValue = computed(() => {
+  if (rowKind.value === 'quota' || (rowKind.value === 'ttft' && props.item.primary_latency_ms == null)) {
+    return t('channelMonitorCustom.hidden')
+  }
+  return formatLatency(props.item.primary_latency_ms)
+})
+const primaryMetricUnit = computed(() => (
+  rowKind.value === 'quota' || (rowKind.value === 'ttft' && props.item.primary_latency_ms == null) ? '' : 'ms'
+))
+
 const quotaVisible = computed(
   () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
 )
 
 const availabilityLabel = computed(() => {
-  const win = t(`channelStatus.windowTab.${props.window}`)
+  // 固定档用原有文案；Custom 时间档按分钟或天格式化。
+  const key = `channelStatus.windowTab.${props.window}`
+  const win = te(key) ? t(key) : windowLabel(props.window, t)
   return `${t('monitorCommon.availabilityPrefix')} · ${win}`
 })
 

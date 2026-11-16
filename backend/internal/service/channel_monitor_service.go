@@ -131,6 +131,7 @@ func (s *ChannelMonitorService) List(ctx context.Context, params ChannelMonitorL
 	for _, it := range items {
 		s.decryptInPlace(it)
 	}
+	s.attachCustomOverrides(ctx, items)
 	return items, total, nil
 }
 
@@ -141,6 +142,7 @@ func (s *ChannelMonitorService) Get(ctx context.Context, id int64) (*ChannelMoni
 		return nil, err
 	}
 	s.decryptInPlace(m)
+	s.attachCustomOverrides(ctx, []*ChannelMonitor{m})
 	return m, nil
 }
 
@@ -152,10 +154,16 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := validateBodyModeForProtocol(p.Provider, p.APIMode, p.BodyOverrideMode, p.BodyOverride); err != nil {
 		return nil, err
 	}
+	if err := validateCustomStreamingProbe(s.probeRuntime(ctx).Mode, p.BodyOverrideMode, p.BodyOverride); err != nil {
+		return nil, err
+	}
 	if err := validateExtraHeaders(p.ExtraHeaders); err != nil {
 		return nil, err
 	}
 	if err := s.validateLinkedAccount(ctx, p.Provider, p.AccountID); err != nil {
+		return nil, err
+	}
+	if err := s.enforceCustomInterval(ctx, p.IntervalSeconds, p.JitterSeconds); err != nil {
 		return nil, err
 	}
 	checkMode := defaultCheckMode(p.CheckMode)
@@ -183,9 +191,15 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
 	}
-	if err := s.repo.Create(ctx, m); err != nil {
-		return nil, fmt.Errorf("create channel monitor: %w", err)
+	if err := s.commitMonitorChange(ctx, p.CustomOverride, func(txCtx context.Context) error {
+		if err := s.repo.Create(txCtx, m); err != nil {
+			return fmt.Errorf("create channel monitor: %w", err)
+		}
+		return nil
+	}, func() int64 { return m.ID }); err != nil {
+		return nil, err
 	}
+	m.CustomOverride = p.CustomOverride
 	// 不再调 s.Get 重走解密链：已知刚加密的明文，直接构造响应。
 	// 这样可避免 SecretEncryptor 解密失败时 APIKey 被静默清空的问题（见 Fix 4）。
 	m.APIKey = strings.TrimSpace(p.APIKey)
@@ -209,11 +223,17 @@ func (s *ChannelMonitorService) Duplicate(
 		return nil, err
 	}
 	if existing != nil {
+		if err := s.copyMissingCustomOverride(ctx, id, existing); err != nil {
+			return nil, err
+		}
 		return existing, nil
 	}
 
 	source, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateCustomStreamingProbe(s.probeRuntime(ctx).Mode, source.BodyOverrideMode, source.BodyOverride); err != nil {
 		return nil, err
 	}
 
@@ -251,9 +271,19 @@ func (s *ChannelMonitorService) Duplicate(
 		AccountID:            cloneInt64Pointer(source.AccountID),
 		DuplicateOperationID: operationID,
 	}
-	if err := s.repo.Create(ctx, duplicate); err != nil {
-		return nil, fmt.Errorf("duplicate channel monitor: %w", err)
+	sourceOverride, err := s.lookupCustomOverride(ctx, source.ID)
+	if err != nil {
+		return nil, err
 	}
+	if err := s.commitMonitorChange(ctx, sourceOverride, func(txCtx context.Context) error {
+		if err := s.repo.Create(txCtx, duplicate); err != nil {
+			return fmt.Errorf("duplicate channel monitor: %w", err)
+		}
+		return nil
+	}, func() int64 { return duplicate.ID }); err != nil {
+		return nil, err
+	}
+	duplicate.CustomOverride = sourceOverride
 
 	// Match Create/Update response semantics: repository receives ciphertext,
 	// while handlers receive plaintext only so they can return the masked form.
@@ -432,7 +462,18 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	if err != nil {
 		return nil, err
 	}
+	wasEnabled := existing.Enabled
 	if err := applyMonitorUpdate(existing, p); err != nil {
+		return nil, err
+	}
+	bodyChanged := p.BodyOverride != nil || p.BodyOverrideMode != nil || p.Provider != nil || p.APIMode != nil
+	enabling := !wasEnabled && existing.Enabled
+	if bodyChanged || enabling {
+		if err := namedCustomStreamingProbe(s.probeRuntime(ctx).Mode, existing); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.enforceCustomInterval(ctx, existing.IntervalSeconds, existing.JitterSeconds); err != nil {
 		return nil, err
 	}
 
@@ -449,8 +490,16 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 		}
 	}
 
-	if err := s.repo.Update(ctx, existing); err != nil {
-		return nil, fmt.Errorf("update channel monitor: %w", err)
+	if err := s.commitMonitorChange(ctx, p.CustomOverride, func(txCtx context.Context) error {
+		if err := s.repo.Update(txCtx, existing); err != nil {
+			return fmt.Errorf("update channel monitor: %w", err)
+		}
+		return nil
+	}, func() int64 { return existing.ID }); err != nil {
+		return nil, err
+	}
+	if p.CustomOverride != nil {
+		existing.CustomOverride = p.CustomOverride
 	}
 
 	// 不再调 s.Get 重走解密链：避免二次解密带来的"密文被静默清空"风险（与 Create 一致）。
@@ -590,6 +639,9 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 	if err != nil {
 		return nil, fmt.Errorf("list history: %w", err)
 	}
+	for _, e := range entries {
+		e.LatencyMs, e.TokensPerSec = redactDisplayedMetrics(e.MetricKind, e.Status, e.LatencyMs, e.TokensPerSec)
+	}
 	return entries, nil
 }
 
@@ -597,7 +649,7 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 
 // RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
 // 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
-// 仅当 channel_monitor_enabled=true 且 channel_monitor_mode=v1 时真正探测；
+// 仅当 channel_monitor_enabled=true 且模式为 v1 或 custom 时真正探测；
 // mode=v2 时返回 ErrChannelMonitorActiveProbesRetired，不产生上游流量。
 //
 // 按 check_mode 分派：probe（默认，现状探活）/ quota（仅查关联账号配额，
@@ -624,13 +676,25 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	case MonitorCheckModeQuota:
 		results = s.runQuotaOnlyCheck(ctx, m)
 	case MonitorCheckModeQuotaProbe:
-		results = s.runChecksConcurrent(ctx, m)
-		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(ctx, m))
+		results = s.runModelChecks(ctx, rt.Mode, m)
+		quotaCtx, cancelQuota := quotaFetchContext(ctx, rt.Mode)
+		defer cancelQuota()
+		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(quotaCtx, m))
 	default:
-		results = s.runChecksConcurrent(ctx, m)
+		results = s.runModelChecks(ctx, rt.Mode, m)
 	}
-	s.persistCheckResults(ctx, m, results)
+	s.persistCheckResults(ctx, rt.Mode, m, results)
+	for _, r := range results {
+		r.LatencyMs, r.TokensPerSec = redactDisplayedMetrics(r.MetricKind, r.Status, r.LatencyMs, r.TokensPerSec)
+	}
 	return results, nil
+}
+
+func (s *ChannelMonitorService) runModelChecks(ctx context.Context, mode string, m *ChannelMonitor) []*CheckResult {
+	if mode == ChannelMonitorModeCustom {
+		return s.runCustomChecks(ctx, m)
+	}
+	return s.runChecksConcurrent(ctx, m)
 }
 
 // runQuotaOnlyCheck quota 模式：一次配额抓取 → 单条 CheckResult
@@ -639,6 +703,7 @@ func (s *ChannelMonitorService) runQuotaOnlyCheck(ctx context.Context, m *Channe
 	snapshot := s.fetchQuotaSnapshot(ctx, m)
 	res := deriveQuotaCheckResult(snapshot, m.PrimaryModel, time.Now())
 	res.Quota = snapshot
+	res.MetricKind = MonitorMetricKindQuota
 	return []*CheckResult{res}
 }
 
@@ -669,7 +734,10 @@ func attachQuotaSnapshot(results []*CheckResult, snapshot *domain.MonitorQuotaSn
 
 // persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。
 // 任一写库失败都只记日志，不影响调用方拿到 results（与 MVP 期望一致：宁可漏记历史也要先返回结果）。
-func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *ChannelMonitor, results []*CheckResult) {
+func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, mode string, m *ChannelMonitor, results []*CheckResult) {
+	writeCtx, cancel := historyWriteContext(ctx, mode)
+	defer cancel()
+	ctx = writeCtx
 	rows := make([]*ChannelMonitorHistoryRow, 0, len(results))
 	for _, r := range results {
 		rows = append(rows, &ChannelMonitorHistoryRow{
@@ -681,6 +749,8 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 			Message:       r.Message,
 			CheckedAt:     r.CheckedAt,
 			Quota:         r.Quota,
+			MetricKind:    historyMetricKind(mode, m.CheckMode, r),
+			TokensPerSec:  r.TokensPerSec,
 		})
 	}
 	if err := s.repo.InsertHistoryBatch(ctx, rows); err != nil {

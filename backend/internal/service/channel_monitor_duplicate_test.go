@@ -185,6 +185,467 @@ func TestDuplicateChannelMonitorNamePreservesSuffixWithinSchemaLimit(t *testing.
 	require.True(t, strings.HasSuffix(name, " (Copy)"))
 }
 
+type customOverrideRepoStub struct {
+	duplicateChannelMonitorRepoStub
+	overrides map[int64]*ChannelMonitorCustomOverride
+	upserts   []int64
+}
+
+func (r *customOverrideRepoStub) GetCustomOverride(_ context.Context, id int64) (*ChannelMonitorCustomOverride, error) {
+	if r.overrides == nil {
+		return nil, nil
+	}
+	return r.overrides[id], nil
+}
+
+func (r *customOverrideRepoStub) ListCustomOverrides(context.Context, []int64) (map[int64]*ChannelMonitorCustomOverride, error) {
+	return map[int64]*ChannelMonitorCustomOverride{}, nil
+}
+
+func (r *customOverrideRepoStub) UpsertCustomOverride(_ context.Context, id int64, ov *ChannelMonitorCustomOverride) error {
+	if r.overrides == nil {
+		r.overrides = map[int64]*ChannelMonitorCustomOverride{}
+	}
+	r.overrides[id] = ov
+	r.upserts = append(r.upserts, id)
+	return nil
+}
+
+func (r *customOverrideRepoStub) DeleteCustomOverride(context.Context, int64) error { return nil }
+
+func (r *customOverrideRepoStub) ShortestActualInterval(context.Context) (int, bool, error) {
+	return 0, false, nil
+}
+
+func TestDuplicateChannelMonitorCopiesCustomOverride(t *testing.T) {
+	enabled := true
+	minMs, maxMs := 10, 100
+	source := &ChannelMonitor{
+		ID:              42,
+		Name:            "primary",
+		Provider:        MonitorProviderOpenAI,
+		Endpoint:        "https://api.example.com",
+		APIKey:          "OLD:top-secret",
+		PrimaryModel:    "gpt-5.4-mini",
+		IntervalSeconds: 90,
+		Enabled:         true,
+	}
+	repo := &customOverrideRepoStub{duplicateChannelMonitorRepoStub: duplicateChannelMonitorRepoStub{source: source}}
+	repo.overrides = map[int64]*ChannelMonitorCustomOverride{
+		source.ID: {TTFTAdjustEnabled: &enabled, TTFTMinMs: &minMs, TTFTMaxMs: &maxMs},
+	}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+
+	duplicate, err := svc.Duplicate(context.Background(), source.ID, 77, "admin:77", "copy-override")
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{duplicate.ID}, repo.upserts)
+	require.Equal(t, repo.overrides[source.ID], duplicate.CustomOverride)
+}
+
+type createGuardRepo struct {
+	ChannelMonitorRepository
+	creates int
+}
+
+func (r *createGuardRepo) Create(context.Context, *ChannelMonitor) error {
+	r.creates++
+	return nil
+}
+
+func TestValidateCustomStreamingProbe(t *testing.T) {
+	body := map[string]any{"stream": false, "messages": []any{map[string]any{"role": "user", "content": "ping"}}}
+	require.ErrorIs(t, validateCustomStreamingProbe(ChannelMonitorModeCustom, MonitorBodyOverrideModeReplace, body), ErrChannelMonitorCustomStreamRequired)
+	require.NoError(t, validateCustomStreamingProbe(ChannelMonitorModeV1, MonitorBodyOverrideModeReplace, body))
+	require.NoError(t, validateCustomStreamingProbe(ChannelMonitorModeCustom, MonitorBodyOverrideModeMerge, body))
+	require.NoError(t, validateCustomStreamingProbe(ChannelMonitorModeCustom, MonitorBodyOverrideModeReplace, map[string]any{"messages": []any{}}))
+}
+
+func TestCreateRejectsNonStreamingReplaceInCustomMode(t *testing.T) {
+	repo := &createGuardRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}})
+	body := map[string]any{
+		"stream":   false,
+		"messages": []any{map[string]any{"role": "user", "content": "ping"}},
+	}
+
+	created, err := svc.Create(context.Background(), ChannelMonitorCreateParams{
+		Name:             "probe",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		APIKey:           "secret",
+		PrimaryModel:     "gpt-5.4-mini",
+		IntervalSeconds:  60,
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride:     body,
+	})
+
+	require.Nil(t, created)
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+	require.Zero(t, repo.creates)
+}
+
+func TestCreateAllowsNonStreamingReplaceOutsideCustomMode(t *testing.T) {
+	repo := &createGuardRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}})
+	body := map[string]any{
+		"stream":   false,
+		"messages": []any{map[string]any{"role": "user", "content": "ping"}},
+	}
+
+	created, err := svc.Create(context.Background(), ChannelMonitorCreateParams{
+		Name:             "probe",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		APIKey:           "secret",
+		PrimaryModel:     "gpt-5.4-mini",
+		IntervalSeconds:  60,
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride:     body,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	require.Equal(t, 1, repo.creates)
+}
+
+func TestUpdateRejectsNonStreamingReplaceInCustomMode(t *testing.T) {
+	repo := &updateGuardRepo{source: &ChannelMonitor{
+		ID:               7,
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		BodyOverrideMode: MonitorBodyOverrideModeOff,
+		IntervalSeconds:  60,
+	}}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}})
+	mode := MonitorBodyOverrideModeReplace
+	body := map[string]any{
+		"stream":   false,
+		"messages": []any{map[string]any{"role": "user", "content": "ping"}},
+	}
+
+	updated, err := svc.Update(context.Background(), repo.source.ID, ChannelMonitorUpdateParams{
+		BodyOverrideMode: &mode,
+		BodyOverride:     &body,
+	})
+
+	require.Nil(t, updated)
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+	require.Zero(t, repo.updates)
+}
+
+func TestDuplicateRejectsNonStreamingReplaceInCustomMode(t *testing.T) {
+	source := &ChannelMonitor{
+		ID:               42,
+		Name:             "primary",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "https://api.example.com",
+		APIKey:           "OLD:top-secret",
+		PrimaryModel:     "gpt-5.4-mini",
+		IntervalSeconds:  90,
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride: map[string]any{
+			"stream":   false,
+			"messages": []any{map[string]any{"role": "user", "content": "ping"}},
+		},
+	}
+	repo := &duplicateChannelMonitorRepoStub{source: source}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}})
+
+	duplicate, err := svc.Duplicate(context.Background(), source.ID, 77, "admin:77", "copy-stream")
+
+	require.Nil(t, duplicate)
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+	require.Empty(t, repo.created)
+}
+
+func TestSaveMonitorModeRejectsExistingNonStreamingReplace(t *testing.T) {
+	repo := &bodyCatalogRepo{bodies: []ChannelMonitorBodyRef{
+		{ID: 7, Name: "legacy", BodyOverrideMode: MonitorBodyOverrideModeReplace, BodyOverride: map[string]any{"stream": false}},
+		{ID: 8, Name: "spare", BodyOverrideMode: MonitorBodyOverrideModeReplace, BodyOverride: map[string]any{"stream": false, "messages": []any{}}},
+	}}
+	settings := &modeSaveSettings{mode: ChannelMonitorModeV1}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	err := svc.SaveMonitorMode(context.Background(), ChannelMonitorModeCustom, defaultChannelMonitorCustomConfig())
+
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+	require.Contains(t, err.Error(), "legacy (#7)")
+	require.Contains(t, err.Error(), "spare (#8)")
+	require.False(t, settings.saved)
+	require.Equal(t, false, repo.bodies[0].BodyOverride["stream"])
+}
+
+func TestSaveMonitorModeKeepsNonStreamingReplaceOutsideCustom(t *testing.T) {
+	repo := &bodyCatalogRepo{bodies: []ChannelMonitorBodyRef{
+		{ID: 7, Name: "legacy", BodyOverrideMode: MonitorBodyOverrideModeReplace, BodyOverride: map[string]any{"stream": false}},
+	}}
+	settings := &modeSaveSettings{mode: ChannelMonitorModeV1}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	require.NoError(t, svc.SaveMonitorMode(context.Background(), ChannelMonitorModeV1, defaultChannelMonitorCustomConfig()))
+	require.True(t, settings.saved)
+	require.Zero(t, repo.calls)
+}
+
+func TestSaveMonitorModeAllowsReplaceWithoutExplicitFalse(t *testing.T) {
+	repo := &bodyCatalogRepo{bodies: []ChannelMonitorBodyRef{
+		{ID: 3, Name: "merge", BodyOverrideMode: MonitorBodyOverrideModeMerge, BodyOverride: map[string]any{"stream": false}},
+		{ID: 4, Name: "open", BodyOverrideMode: MonitorBodyOverrideModeReplace, BodyOverride: map[string]any{"messages": []any{}}},
+	}}
+	settings := &modeSaveSettings{mode: ChannelMonitorModeV1}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	require.NoError(t, svc.SaveMonitorMode(context.Background(), ChannelMonitorModeCustom, defaultChannelMonitorCustomConfig()))
+	require.True(t, settings.saved)
+}
+
+func TestUpdateRejectsEnablingNonStreamingReplaceInCustomMode(t *testing.T) {
+	repo := &updateGuardRepo{source: &ChannelMonitor{
+		ID:               7,
+		Name:             "legacy",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		APIKey:           "OLD:key",
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride:     map[string]any{"stream": false, "messages": []any{}},
+		IntervalSeconds:  60,
+	}}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}})
+	enabled := true
+
+	updated, err := svc.Update(context.Background(), repo.source.ID, ChannelMonitorUpdateParams{Enabled: &enabled})
+
+	require.Nil(t, updated)
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+	require.Contains(t, err.Error(), "legacy (#7)")
+	require.Zero(t, repo.updates)
+}
+
+func TestUpdateAllowsEnablingNonStreamingReplaceOutsideCustomMode(t *testing.T) {
+	repo := &updateGuardRepo{source: &ChannelMonitor{
+		ID:               7,
+		Name:             "legacy",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		APIKey:           "OLD:key",
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride:     map[string]any{"stream": false, "messages": []any{}},
+		IntervalSeconds:  60,
+	}}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV1}})
+	enabled := true
+
+	updated, err := svc.Update(context.Background(), repo.source.ID, ChannelMonitorUpdateParams{Enabled: &enabled})
+
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.True(t, updated.Enabled)
+	require.Equal(t, 1, repo.updates)
+}
+
+func TestSaveMonitorModeRejectsNonStreamingReplaceWhileAlreadyCustom(t *testing.T) {
+	repo := &bodyCatalogRepo{bodies: []ChannelMonitorBodyRef{
+		{ID: 7, Name: "legacy", BodyOverrideMode: MonitorBodyOverrideModeReplace, BodyOverride: map[string]any{"stream": false}},
+	}}
+	settings := &modeSaveSettings{mode: ChannelMonitorModeCustom}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	err := svc.SaveMonitorMode(context.Background(), ChannelMonitorModeCustom, defaultChannelMonitorCustomConfig())
+
+	require.ErrorIs(t, err, ErrChannelMonitorCustomStreamRequired)
+	require.Contains(t, err.Error(), "legacy (#7)")
+	require.False(t, settings.saved)
+}
+
+func TestUpdateAllowsNameChangeOnDisabledNonStreamingReplace(t *testing.T) {
+	repo := &updateGuardRepo{source: &ChannelMonitor{
+		ID:               7,
+		Name:             "legacy",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		APIKey:           "OLD:key",
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride:     map[string]any{"stream": false, "messages": []any{}},
+		IntervalSeconds:  60,
+	}}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}})
+	name := "renamed"
+
+	updated, err := svc.Update(context.Background(), repo.source.ID, ChannelMonitorUpdateParams{Name: &name})
+
+	require.NoError(t, err)
+	require.Equal(t, "renamed", updated.Name)
+	require.Equal(t, 1, repo.updates)
+}
+
+func TestUpdateAllowsEnablingAfterStreamIsFixed(t *testing.T) {
+	repo := &updateGuardRepo{source: &ChannelMonitor{
+		ID:               7,
+		Name:             "legacy",
+		Provider:         MonitorProviderOpenAI,
+		Endpoint:         "http://127.0.0.1:8080",
+		APIKey:           "OLD:key",
+		BodyOverrideMode: MonitorBodyOverrideModeReplace,
+		BodyOverride:     map[string]any{"stream": false, "messages": []any{}},
+		IntervalSeconds:  60,
+	}}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(channelMonitorRuntimeStub{rt: ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}})
+	enabled := true
+	mode := MonitorBodyOverrideModeReplace
+	body := map[string]any{
+		"stream":   true,
+		"messages": []any{map[string]any{"role": "user", "content": "ping"}},
+	}
+
+	updated, err := svc.Update(context.Background(), repo.source.ID, ChannelMonitorUpdateParams{
+		Enabled:          &enabled,
+		BodyOverrideMode: &mode,
+		BodyOverride:     &body,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.True(t, updated.Enabled)
+	require.Equal(t, 1, repo.updates)
+}
+
+type modeSaveSettings struct {
+	mode  string
+	saved bool
+}
+
+func (s *modeSaveSettings) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
+	return ChannelMonitorRuntime{Enabled: true, Mode: s.mode}
+}
+
+func (s *modeSaveSettings) GetChannelMonitorCustom(context.Context) (ChannelMonitorCustomConfig, bool) {
+	return defaultChannelMonitorCustomConfig(), true
+}
+
+func (s *modeSaveSettings) SaveChannelMonitorMode(context.Context, string, ChannelMonitorCustomConfig) error {
+	s.saved = true
+	return nil
+}
+
+type bodyCatalogRepo struct {
+	ChannelMonitorRepository
+	bodies []ChannelMonitorBodyRef
+	calls  int
+}
+
+func (r *bodyCatalogRepo) ListReplaceBodies(context.Context) ([]ChannelMonitorBodyRef, error) {
+	r.calls++
+	return r.bodies, nil
+}
+
+func (r *bodyCatalogRepo) ListAllCustomOverrides(context.Context) ([]*ChannelMonitorCustomOverride, error) {
+	return nil, nil
+}
+
+func (r *bodyCatalogRepo) ShortestActualInterval(context.Context) (int, bool, error) {
+	return 0, false, nil
+}
+
+type updateGuardRepo struct {
+	ChannelMonitorRepository
+	source  *ChannelMonitor
+	updates int
+}
+
+func (r *updateGuardRepo) GetByID(context.Context, int64) (*ChannelMonitor, error) {
+	return r.source, nil
+}
+
+func (r *updateGuardRepo) Update(context.Context, *ChannelMonitor) error {
+	r.updates++
+	return nil
+}
+
+func TestCreateRejectsInvalidCustomOverrideBeforeWrite(t *testing.T) {
+	enabled := true
+	minMs, maxMs := 20, 10
+	repo := &createGuardRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+
+	created, err := svc.Create(context.Background(), ChannelMonitorCreateParams{
+		Name:            "probe",
+		Provider:        MonitorProviderOpenAI,
+		Endpoint:        "http://127.0.0.1:8080",
+		APIKey:          "secret",
+		PrimaryModel:    "gpt-5.4-mini",
+		IntervalSeconds: 60,
+		CustomOverride:  &ChannelMonitorCustomOverride{TTFTAdjustEnabled: &enabled, TTFTMinMs: &minMs, TTFTMaxMs: &maxMs},
+	})
+
+	require.Nil(t, created)
+	require.ErrorIs(t, err, ErrChannelMonitorInvalidTTFT)
+	require.Zero(t, repo.creates)
+}
+
+type overrideCatalogSettings struct {
+	saved bool
+}
+
+func (s *overrideCatalogSettings) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
+	return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}
+}
+
+func (s *overrideCatalogSettings) GetChannelMonitorCustom(context.Context) (ChannelMonitorCustomConfig, bool) {
+	cfg := defaultChannelMonitorCustomConfig()
+	cfg.TTFTAdjustEnabled = true
+	cfg.TTFTMinMs = 100
+	cfg.TTFTMaxMs = 1000
+	return cfg, true
+}
+
+func (s *overrideCatalogSettings) SaveChannelMonitorMode(context.Context, string, ChannelMonitorCustomConfig) error {
+	s.saved = true
+	return nil
+}
+
+type overrideCatalogRepo struct {
+	ChannelMonitorRepository
+	items []*ChannelMonitorCustomOverride
+}
+
+func (r *overrideCatalogRepo) ListAllCustomOverrides(context.Context) ([]*ChannelMonitorCustomOverride, error) {
+	return r.items, nil
+}
+
+func (r *overrideCatalogRepo) ShortestActualInterval(context.Context) (int, bool, error) {
+	return 0, false, nil
+}
+
+func TestSaveMonitorModeRejectsBrokenExistingOverride(t *testing.T) {
+	maxMs := 50
+	repo := &overrideCatalogRepo{items: []*ChannelMonitorCustomOverride{{TTFTMaxMs: &maxMs}}}
+	settings := &overrideCatalogSettings{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.SetRuntimeReader(settings)
+
+	cfg := defaultChannelMonitorCustomConfig()
+	cfg.TTFTAdjustEnabled = true
+	cfg.TTFTMinMs = 100
+	cfg.TTFTMaxMs = 1000
+	err := svc.SaveMonitorMode(context.Background(), ChannelMonitorModeCustom, cfg)
+
+	require.ErrorIs(t, err, ErrChannelMonitorInvalidTTFT)
+	require.False(t, settings.saved)
+}
+
 func TestDuplicateChannelMonitorRejectsUndecryptableAPIKey(t *testing.T) {
 	source := &ChannelMonitor{ID: 42, Name: "broken", APIKey: "OLD:broken"}
 	repo := &duplicateChannelMonitorRepoStub{source: source}

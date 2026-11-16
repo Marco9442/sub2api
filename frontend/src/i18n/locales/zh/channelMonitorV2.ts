@@ -135,10 +135,6 @@ export default {
     admin: {
       descriptionV1: '当前系统设置为 V1 主动探测：可管理监控项并立即检测；V2 聚合不会运行。',
       descriptionV2: '当前系统设置为 V2 被动监控：配置聚合维度；V1 主动探测不会运行。',
-      tabAria: '监控管理',
-      tabV2: 'V2 数据监控配置',
-      tabV1Active: 'V1 主动探测',
-      tabV1History: 'V1 历史（当前模式未启用探测）',
     },
   },
 }
