@@ -68,11 +68,13 @@ type Account struct {
 }
 
 // Window 是一个额度窗口内的累计用量。
+// ActualCost 是生成时按当时倍率算出的费用。旧数据没有该字段，展示时回退到 Cost，不再乘当前倍率。
 type Window struct {
-	Start    time.Time `json:"start"`
-	Requests int64     `json:"requests"`
-	Tokens   int64     `json:"tokens"`
-	Cost     float64   `json:"cost"`
+	Start      time.Time `json:"start"`
+	Requests   int64     `json:"requests"`
+	Tokens     int64     `json:"tokens"`
+	Cost       float64   `json:"cost"`
+	ActualCost float64   `json:"actual_cost,omitempty"`
 }
 
 // DayUsage 是一个自然日（北京时间）的用量汇总。
@@ -134,6 +136,27 @@ type State struct {
 // NewState 返回空状态。
 func NewState() *State {
 	return &State{Accounts: map[int64]*Account{}, Seq: map[string]int64{}}
+}
+
+// cloneState 复制一份可修改的状态。写入先改副本，落库成功后才替换内存。
+func cloneState(src *State) *State {
+	if src == nil {
+		return NewState()
+	}
+	next := *src
+	next.Accounts = make(map[int64]*Account, len(src.Accounts))
+	for id, account := range src.Accounts {
+		next.Accounts[id] = cloneAccount(account)
+	}
+	next.Groups = append([]Group(nil), src.Groups...)
+	next.Proxies = append([]Proxy(nil), src.Proxies...)
+	if src.Seq != nil {
+		next.Seq = make(map[string]int64, len(src.Seq))
+		for key, value := range src.Seq {
+			next.Seq[key] = value
+		}
+	}
+	return &next
 }
 
 // lifecycleFrozen 报告账号是否由管理员接管了生命周期。

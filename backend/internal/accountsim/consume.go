@@ -63,18 +63,19 @@ func consume(account *Account, t time.Time, r *rng, cfg Config) {
 
 	usedAt := t.Add(time.Duration(r.intn(int(Step/time.Second))) * time.Second)
 	account.LastUsedAt = &usedAt
-	addWindow(&account.Window5h, t, requests, tokens, cost)
-	addWindow(&account.Window7d, t, requests, tokens, cost)
+	addWindow(&account.Window5h, t, requests, tokens, cost, actual)
+	addWindow(&account.Window7d, t, requests, tokens, cost, actual)
 	limitOnCap(account, t, prof)
 }
 
-func addWindow(w *Window, t time.Time, requests, tokens int64, cost float64) {
+func addWindow(w *Window, t time.Time, requests, tokens int64, cost, actual float64) {
 	if w.Start.IsZero() {
 		w.Start = t
 	}
 	w.Requests += requests
 	w.Tokens += tokens
 	w.Cost += cost
+	w.ActualCost += actual
 }
 
 func limitOnCap(account *Account, t time.Time, prof profile) {

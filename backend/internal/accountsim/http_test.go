@@ -3,6 +3,7 @@ package accountsim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,11 @@ type memStore struct {
 }
 
 func (m *memStore) Load(context.Context) (*State, Config, error) { return m.state, m.cfg, nil }
-func (m *memStore) SaveState(context.Context, *State) error      { m.saves++; return nil }
+func (m *memStore) SaveState(_ context.Context, state *State) error {
+	m.saves++
+	m.state = state
+	return nil
+}
 func (m *memStore) SaveConfig(_ context.Context, cfg Config) error {
 	m.cfg = cfg
 	return nil
@@ -318,9 +323,13 @@ func TestUsageInfoCoversVisiblePlatforms(t *testing.T) {
 	if grok.GrokBilling.MonthlyLimitCents != nil {
 		t.Fatal("只有周额度时不应带月额度")
 	}
-	gemini := usageInfo(&Account{Platform: "gemini", Type: "oauth", Tier: "ultra", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5}}}, now)
+	gemini := usageInfo(&Account{Platform: "gemini", Type: "oauth", Tier: "ultra", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5, ActualCost: 5}}}, now)
 	if gemini.GeminiSharedDaily == nil || gemini.GeminiSharedDaily.Utilization <= 0 {
 		t.Fatalf("gemini 日额度不符: %+v", gemini.GeminiSharedDaily)
+	}
+	geminiKey := usageInfo(&Account{Platform: "gemini", Type: "apikey", Tier: "pro", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5, ActualCost: 5}}}, now)
+	if geminiKey.GeminiSharedDaily != nil {
+		t.Fatalf("gemini API Key 不应有日额度条: %+v", geminiKey.GeminiSharedDaily)
 	}
 	groups := usageInfo(&Account{Platform: "antigravity", Type: "oauth", Tier: "ultra", RateMultiplier: 1, Window5h: Window{Cost: 6}}, now).AntigravityQuotaGroups
 	if len(groups) != 1 || len(groups[0].Windows) != 2 || groups[0].Windows[1].Window != "weekly" {
@@ -442,19 +451,19 @@ func TestAccountStatsUsesStoredDaysAndEstimatesOlderRange(t *testing.T) {
 		t.Fatalf("当天记录应原样返回: %+v", day)
 	}
 	near(t, "standard", day.Cost, 2)
-	near(t, "account", day.ActualCost, 4)
+	near(t, "account", day.ActualCost, 6)
 	near(t, "user", day.UserCost, 6)
 	earlier := historyOn(t, stats.History, "2026-11-14")
 	if earlier.Requests != 20 || earlier.Tokens != 500 {
 		t.Fatalf("前一天记录应原样返回: %+v", earlier)
 	}
-	near(t, "total_cost", stats.Summary.TotalCost, 6)
+	near(t, "total_cost", stats.Summary.TotalCost, 9)
 	near(t, "total_user_cost", stats.Summary.TotalUserCost, 9)
 	near(t, "total_standard_cost", stats.Summary.TotalStandardCost, 3)
 	if stats.Summary.TotalRequests != 60 || stats.Summary.TotalTokens != 2000 {
 		t.Fatalf("汇总不符: %+v", stats.Summary)
 	}
-	near(t, "avg_cost", stats.Summary.AvgDailyCost, 3)
+	near(t, "avg_cost", stats.Summary.AvgDailyCost, 4.5)
 	near(t, "avg_user", stats.Summary.AvgDailyUserCost, 4.5)
 	near(t, "avg_requests", stats.Summary.AvgDailyRequests, 30)
 	near(t, "avg_tokens", stats.Summary.AvgDailyTokens, 1000)
@@ -462,12 +471,12 @@ func TestAccountStatsUsesStoredDaysAndEstimatesOlderRange(t *testing.T) {
 	if stats.Summary.Today == nil || stats.Summary.Today.Date != "2026-11-15" || stats.Summary.Today.Requests != 40 || stats.Summary.Today.Tokens != 1500 {
 		t.Fatalf("今日不符: %+v", stats.Summary.Today)
 	}
-	near(t, "today_cost", stats.Summary.Today.Cost, 4)
+	near(t, "today_cost", stats.Summary.Today.Cost, 6)
 	near(t, "today_user", stats.Summary.Today.UserCost, 6)
 	if stats.Summary.HighestCostDay == nil || stats.Summary.HighestCostDay.Date != "2026-11-15" || stats.Summary.HighestRequestDay.Date != "2026-11-15" {
 		t.Fatalf("峰值日不符: %+v %+v", stats.Summary.HighestCostDay, stats.Summary.HighestRequestDay)
 	}
-	near(t, "peak_cost", stats.Summary.HighestCostDay.Cost, 4)
+	near(t, "peak_cost", stats.Summary.HighestCostDay.Cost, 6)
 	near(t, "peak_user", stats.Summary.HighestCostDay.UserCost, 6)
 	if len(stats.Models) != 2 || stats.Models[0].Model != "claude-sonnet-5-5" || stats.Models[1].Model != "claude-opus-5-5" {
 		t.Fatalf("模型顺序应按 token 降序: %+v", stats.Models)
@@ -477,13 +486,13 @@ func TestAccountStatsUsesStoredDaysAndEstimatesOlderRange(t *testing.T) {
 		t.Fatalf("sonnet 分摊不符: %+v", sonnet)
 	}
 	near(t, "sonnet_cost", sonnet.Cost, 2.5)
-	near(t, "sonnet_actual", sonnet.ActualCost, 5)
-	near(t, "sonnet_account", sonnet.AccountCost, 5)
+	near(t, "sonnet_actual", sonnet.ActualCost, 7.5)
+	near(t, "sonnet_account", sonnet.AccountCost, 7.5)
 	if opus.Requests != 10 || opus.InputTokens != 250 || opus.OutputTokens != 125 || opus.TotalTokens != 375 {
 		t.Fatalf("opus 分摊不符: %+v", opus)
 	}
 	near(t, "opus_cost", opus.Cost, 0.5)
-	near(t, "opus_actual", opus.ActualCost, 1)
+	near(t, "opus_actual", opus.ActualCost, 1.5)
 	if store.saves != 0 {
 		t.Fatal("读统计不应写状态")
 	}
@@ -505,7 +514,7 @@ func TestAccountStatsUsesStoredDaysAndEstimatesOlderRange(t *testing.T) {
 		t.Fatalf("更早的天数应为已有天数的日均: %+v", estimated)
 	}
 	near(t, "estimated_standard", estimated.Cost, 1.5)
-	near(t, "estimated_account", estimated.ActualCost, 3)
+	near(t, "estimated_account", estimated.ActualCost, 4.5)
 	near(t, "estimated_user", estimated.UserCost, 4.5)
 	if tail := historyOn(t, wide.History, "2026-10-16"); tail.Requests != 30 {
 		t.Fatalf("估算应覆盖到第 31 天之前: %+v", tail)
@@ -607,5 +616,162 @@ func TestSimulatedTestAndModelsDoNotTouchState(t *testing.T) {
 	status, resp = call(t, router, http.MethodPost, "/accounts/9/test", "")
 	if status != http.StatusNotFound {
 		t.Fatalf("不存在的账号不应做测试: %d %+v", status, resp)
+	}
+}
+
+type failStore struct {
+	memStore
+}
+
+func (f *failStore) SaveState(context.Context, *State) error {
+	f.saves++
+	return errors.New("db down")
+}
+
+func testRouter(store stateStore) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	svc := NewService(store, func() time.Time { return fixtureNow })
+	router := gin.New()
+	router.Any("/api/v1/admin/account-sim/*path", NewHandler(svc).Serve)
+	return router
+}
+
+func oneJSON(t *testing.T, body string) envelope {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(body))
+	var env envelope
+	if err := dec.Decode(&env); err != nil || dec.More() {
+		t.Fatalf("响应应是一段 JSON: %v\n%s", err, body)
+	}
+	return env
+}
+
+func TestSaveFailureKeepsMemoryAndWritesOnce(t *testing.T) {
+	store := &failStore{memStore: memStore{state: fixtureState(), cfg: DefaultConfig()}}
+	original := store.state.Accounts[6601]
+	rec := rawCall(t, testRouter(store), http.MethodPut, "/accounts/6601", `{"name":"renamed"}`)
+	env := oneJSON(t, rec.Body.String())
+	if rec.Code != http.StatusInternalServerError || env.Code != http.StatusInternalServerError {
+		t.Fatalf("保存失败应为 500: %d %+v", rec.Code, env)
+	}
+	if store.state.Accounts[6601] != original || original.Name != "cedar.nova12@gmail.com" {
+		t.Fatal("保存失败不应改内存")
+	}
+	status, resp := call(t, testRouter(store), http.MethodGet, "/accounts/6601", "")
+	detail := decode[map[string]any](t, resp.Data)
+	if status != http.StatusOK || detail["name"] != "cedar.nova12@gmail.com" {
+		t.Fatalf("读取仍应是原账号: %d %v", status, detail["name"])
+	}
+}
+
+func TestSuccessfulWriteSwapsOnlyAfterSave(t *testing.T) {
+	router, store := newTestServer(t)
+	original := store.state.Accounts[6601]
+	status, _ := call(t, router, http.MethodPut, "/accounts/6601", `{"name":"renamed"}`)
+	if status != http.StatusOK || store.saves != 1 {
+		t.Fatalf("保存应成功一次: %d saves=%d", status, store.saves)
+	}
+	if original.Name == "renamed" || store.state.Accounts[6601] == original || store.state.Accounts[6601].Name != "renamed" {
+		t.Fatalf("成功后应换成副本: before=%q after=%q", original.Name, store.state.Accounts[6601].Name)
+	}
+}
+
+func TestBulkUpdateWithoutIDsDoesNotSave(t *testing.T) {
+	router, store := newTestServer(t)
+	rec := rawCall(t, router, http.MethodPost, "/accounts/bulk-update", `{}`)
+	env := oneJSON(t, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || env.Code != http.StatusBadRequest || store.saves != 0 {
+		t.Fatalf("缺少 id 应拒绝且不落库: %d %+v saves=%d", rec.Code, env, store.saves)
+	}
+}
+
+func TestCreateRejectsUnsupportedPlatform(t *testing.T) {
+	router, store := newTestServer(t)
+	status, resp := call(t, router, http.MethodPost, "/accounts", `{"name":"x","platform":"unknown","type":"apikey","credentials":{"api_key":"k"}}`)
+	if status != http.StatusBadRequest || store.saves != 0 || !strings.Contains(resp.Message, "Unsupported") {
+		t.Fatalf("未知平台应拒绝且不落库: %d %+v saves=%d", status, resp, store.saves)
+	}
+	p := profileOf("unknown", "apikey", "")
+	if p.Cap5h != 0 || p.Cap7d != 0 || p.CapDaily != 0 {
+		t.Fatalf("未知平台不应有额度窗口: %+v", p)
+	}
+	_ = usageInfo(&Account{Platform: "unknown", Type: "apikey", RateMultiplier: 1}, fixtureNow)
+}
+
+func TestManualRestoreClearsRetirementAndResumesUsage(t *testing.T) {
+	router, store := newTestServer(t)
+	retired := fixtureNow.Add(-time.Hour)
+	account := store.state.Accounts[6601]
+	account.Status = StatusError
+	account.ErrorMessage = "401"
+	account.Schedulable = false
+	account.RetiredAt = &retired
+	account.DeleteAt = fixtureNow.Add(24 * time.Hour)
+	account.RetireOnErr = true
+
+	status, _ := call(t, router, http.MethodPost, "/accounts/6601/clear-error", `{}`)
+	restored := store.state.Accounts[6601]
+	if status != http.StatusOK || restored.Status != StatusActive || restored.RetiredAt != nil || !restored.DeleteAt.IsZero() || restored.RetireOnErr || !restored.Pinned["status"] || restored.Schedulable {
+		t.Fatalf("清除错误应取消淘汰并保持手动接管: status=%d account=%+v", status, restored)
+	}
+	if serving(restored, fixtureNow) {
+		t.Fatal("未打开调度时不应接单")
+	}
+
+	heldAccount := store.state.Accounts[6603]
+	heldAccount.Status = StatusInactive
+	heldAccount.RetiredAt = &retired
+	heldAccount.DeleteAt = fixtureNow.Add(24 * time.Hour)
+	status, _ = call(t, router, http.MethodPost, "/accounts/6603/schedulable", `{"schedulable":true}`)
+	held := store.state.Accounts[6603]
+	if status != http.StatusOK || held.RetiredAt == nil || !held.Schedulable || serving(held, fixtureNow) {
+		t.Fatalf("停用账号打开调度不应取消淘汰: %d retired=%v", status, held.RetiredAt != nil)
+	}
+
+	status, _ = call(t, router, http.MethodPost, "/accounts/6601/schedulable", `{"schedulable":true}`)
+	resumed := store.state.Accounts[6601]
+	if status != http.StatusOK || !resumed.Schedulable || resumed.RetiredAt != nil || !resumed.Pinned["status"] || !serving(resumed, fixtureNow) {
+		t.Fatalf("正常账号打开调度后应可接单: %d %+v", status, resumed)
+	}
+	before := resumed.TotalCost
+	consume(resumed, fixtureNow, newRNG(resumed.ID, fixtureNow.Unix()), DefaultConfig())
+	if resumed.TotalCost <= before {
+		t.Fatal("打开调度后用量应增加")
+	}
+}
+
+func TestEditingActiveClearsRetirement(t *testing.T) {
+	router, store := newTestServer(t)
+	retired := fixtureNow.Add(-time.Hour)
+	account := store.state.Accounts[6604]
+	account.RetiredAt = &retired
+	account.DeleteAt = fixtureNow.Add(48 * time.Hour)
+	account.RetireOnErr = true
+	status, _ := call(t, router, http.MethodPut, "/accounts/6604", `{"status":"active"}`)
+	got := store.state.Accounts[6604]
+	if status != http.StatusOK || got.Status != StatusActive || got.RetiredAt != nil || !got.DeleteAt.IsZero() || got.RetireOnErr || !got.Pinned["status"] {
+		t.Fatalf("改回正常应取消淘汰: %d %+v", status, got)
+	}
+}
+
+func TestDisplayedCostUsesStoredValue(t *testing.T) {
+	day := fixtureNow.In(cst).Format(time.DateOnly)
+	account := &Account{
+		Platform: "anthropic", Type: "oauth", Tier: "max", RateMultiplier: 4,
+		Days:     []DayUsage{{Date: day, Requests: 3, Cost: 2, ActualCost: 5}},
+		Window5h: Window{Start: fixtureNow.Add(-time.Hour), Requests: 3, Tokens: 10, Cost: 2},
+	}
+	stats := todayStats(account, fixtureNow)
+	if stats.Cost != 5 || stats.UserCost != 5 || stats.StandardCost != 2 {
+		t.Fatalf("今日费用应读保存值: %+v", stats)
+	}
+	window := windowStatsOf(account.Window5h)
+	if window.Cost != 2 || window.UserCost != 2 || window.StandardCost != 2 {
+		t.Fatalf("旧窗口应回退标准费用: %+v", window)
+	}
+	account.Window5h.ActualCost = 7
+	window = windowStatsOf(account.Window5h)
+	if window.Cost != 7 || window.UserCost != 7 {
+		t.Fatalf("新窗口应读保存费用: %+v", window)
 	}
 }

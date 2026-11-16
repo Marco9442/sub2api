@@ -105,7 +105,9 @@ func profileOf(platform, accountType, tier string) profile {
 		p = profile{HourlyCost: 0.5, Concurrency: [2]int{2, 5}}
 	}
 	// 以订阅为主的平台上，API Key 账号按量计费，没有额度窗口。
-	if accountType == "apikey" && platformTypes[platform][0] != "apikey" {
+	// 未知平台没有类型表，不能按下标取，否则后台演进会退出进程。
+	types := platformTypes[platform]
+	if accountType == "apikey" && (len(types) == 0 || types[0] != "apikey") {
 		p.Cap5h, p.Cap7d, p.CapDaily = 0, 0, 0
 	}
 	return p

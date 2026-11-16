@@ -113,17 +113,22 @@ func (s *Service) View(ctx context.Context, fn func(state *State, cfg Config, no
 	return nil
 }
 
-// Update 在写锁下修改状态，fn 成功后整体落库。
+// Update 在副本上修改。落库成功后才替换内存；失败时原状态保持不变。
 func (s *Service) Update(ctx context.Context, fn func(state *State, cfg Config, now time.Time) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureLoaded(ctx); err != nil {
 		return err
 	}
-	if err := fn(s.state, s.config, s.now()); err != nil {
+	next := cloneState(s.state)
+	if err := fn(next, s.config, s.now()); err != nil {
 		return err
 	}
-	return s.store.SaveState(ctx, s.state)
+	if err := s.store.SaveState(ctx, next); err != nil {
+		return err
+	}
+	s.state = next
+	return nil
 }
 
 // Config 返回当前配置。

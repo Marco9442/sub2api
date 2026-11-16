@@ -81,8 +81,8 @@ func accountStats(account *Account, now time.Time, days int) usagestats.AccountU
 	models := map[string]*usagestats.ModelStat{}
 	var requests, tokens int64
 	for _, day := range points {
-		history = append(history, historyFromDay(day, account.RateMultiplier))
-		addModelShares(models, day, account.RateMultiplier)
+		history = append(history, historyFromDay(day))
+		addModelShares(models, day)
 		requests += day.Requests
 		tokens += day.Tokens()
 	}
@@ -148,16 +148,17 @@ func meanDay(days []DayUsage) DayUsage {
 	return out
 }
 
-func historyFromDay(day DayUsage, rate float64) usagestats.AccountUsageHistory {
+func historyFromDay(day DayUsage) usagestats.AccountUsageHistory {
 	at, _ := parseDay(day.Date)
+	cost := storedCost(day.ActualCost, day.Cost)
 	return usagestats.AccountUsageHistory{
 		Date:       day.Date,
 		Label:      at.Format("01/02"),
 		Requests:   day.Requests,
 		Tokens:     day.Tokens(),
 		Cost:       day.Cost,
-		ActualCost: day.Cost * nonZero(rate),
-		UserCost:   day.ActualCost,
+		ActualCost: cost,
+		UserCost:   cost,
 	}
 }
 
@@ -263,7 +264,7 @@ func averageDuration(requests, tokens int64) float64 {
 	return ms
 }
 
-func addModelShares(into map[string]*usagestats.ModelStat, day DayUsage, rate float64) {
+func addModelShares(into map[string]*usagestats.ModelStat, day DayUsage) {
 	var all int64
 	for _, count := range day.Models {
 		if count > 0 {
@@ -273,7 +274,6 @@ func addModelShares(into map[string]*usagestats.ModelStat, day DayUsage, rate fl
 	if all == 0 {
 		return
 	}
-	rate = nonZero(rate)
 	for name, count := range day.Models {
 		if name == "" || count <= 0 {
 			continue
@@ -291,7 +291,7 @@ func addModelShares(into map[string]*usagestats.ModelStat, day DayUsage, rate fl
 		item.CacheCreationTokens += roundShare(day.CacheCreationTokens, count, all)
 		item.TotalTokens = item.InputTokens + item.OutputTokens + item.CacheReadTokens + item.CacheCreationTokens
 		item.Cost += day.Cost * share
-		accountCost := day.Cost * rate * share
+		accountCost := storedCost(day.ActualCost, day.Cost) * share
 		item.ActualCost += accountCost
 		item.AccountCost += accountCost
 	}

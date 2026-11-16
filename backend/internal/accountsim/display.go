@@ -256,20 +256,26 @@ func resetAt(start time.Time, dur time.Duration, now time.Time) *time.Time {
 	return &end
 }
 
-func windowStatsOf(w Window, rate float64) *service.WindowStats {
-	if rate <= 0 {
-		rate = 1
+// storedCost 读取生成时保存的费用。旧数据没有该字段时回退到标准费用，不再乘当前倍率。
+func storedCost(actual, standard float64) float64 {
+	if actual != 0 || standard == 0 {
+		return actual
 	}
+	return standard
+}
+
+func windowStatsOf(w Window) *service.WindowStats {
+	cost := storedCost(w.ActualCost, w.Cost)
 	return &service.WindowStats{
 		Requests:     w.Requests,
 		Tokens:       w.Tokens,
-		Cost:         w.Cost * rate,
+		Cost:         cost,
 		StandardCost: w.Cost,
-		UserCost:     w.Cost * rate,
+		UserCost:     cost,
 	}
 }
 
-func windowProgress(w Window, dur time.Duration, cap float64, now time.Time, rate float64) *service.UsageProgress {
+func windowProgress(w Window, dur time.Duration, cap float64, now time.Time) *service.UsageProgress {
 	reset := resetAt(w.Start, dur, now)
 	remaining := int(reset.Sub(now).Seconds())
 	if remaining < 0 {
@@ -279,20 +285,21 @@ func windowProgress(w Window, dur time.Duration, cap float64, now time.Time, rat
 		Utilization:      utilPercent(w.Cost, cap),
 		ResetsAt:         reset,
 		RemainingSeconds: remaining,
-		WindowStats:      windowStatsOf(w, rate),
+		WindowStats:      windowStatsOf(w),
 	}
 }
 
 // usageInfo 用本地窗口生成与真实用量接口相同的结构，不访问上游。
 func usageInfo(a *Account, now time.Time) *service.UsageInfo {
 	prof := profileOf(a.Platform, a.Type, a.Tier)
-	rate := a.RateMultiplier
 	info := &service.UsageInfo{}
-	five := windowProgress(a.Window5h, window5h, prof.Cap5h, now, rate)
-	seven := windowProgress(a.Window7d, window7d, prof.Cap7d, now, rate)
+	five := windowProgress(a.Window5h, window5h, prof.Cap5h, now)
+	seven := windowProgress(a.Window7d, window7d, prof.Cap7d, now)
 	switch a.Platform {
 	case "gemini":
-		info.GeminiSharedDaily = dayProgress(a, now, prof.CapDaily, rate)
+		if prof.CapDaily > 0 {
+			info.GeminiSharedDaily = dayProgress(a, now, prof.CapDaily)
+		}
 	case "antigravity":
 		info.FiveHour = five
 		info.AntigravityQuotaGroups = []*service.AntigravityQuotaGroup{{
@@ -312,7 +319,7 @@ func usageInfo(a *Account, now time.Time) *service.UsageInfo {
 			Plan:         grokTierLabel(a.Tier),
 			StatusCode:   200,
 		}
-		info.GrokLocalUsage7d = windowStatsOf(a.Window7d, rate)
+		info.GrokLocalUsage7d = windowStatsOf(a.Window7d)
 		info.GrokQuotaSnapshotState = "observed"
 	default:
 		info.FiveHour = five
@@ -321,7 +328,7 @@ func usageInfo(a *Account, now time.Time) *service.UsageInfo {
 	return info
 }
 
-func dayProgress(a *Account, now time.Time, cap, rate float64) *service.UsageProgress {
+func dayProgress(a *Account, now time.Time, cap float64) *service.UsageProgress {
 	day := todayUsage(a, now)
 	reset := monthReset(now)
 	if cap > 0 {
@@ -332,6 +339,7 @@ func dayProgress(a *Account, now time.Time, cap, rate float64) *service.UsagePro
 	if remaining < 0 {
 		remaining = 0
 	}
+	cost := storedCost(day.ActualCost, day.Cost)
 	return &service.UsageProgress{
 		Utilization:      utilPercent(day.Cost, cap),
 		ResetsAt:         &reset,
@@ -339,22 +347,22 @@ func dayProgress(a *Account, now time.Time, cap, rate float64) *service.UsagePro
 		WindowStats: &service.WindowStats{
 			Requests:     day.Requests,
 			Tokens:       day.Tokens(),
-			Cost:         day.Cost * nonZero(rate),
+			Cost:         cost,
 			StandardCost: day.Cost,
-			UserCost:     day.ActualCost,
+			UserCost:     cost,
 		},
 	}
 }
 
 func todayStats(a *Account, now time.Time) service.WindowStats {
 	day := todayUsage(a, now)
-	rate := nonZero(a.RateMultiplier)
+	cost := storedCost(day.ActualCost, day.Cost)
 	return service.WindowStats{
 		Requests:     day.Requests,
 		Tokens:       day.Tokens(),
-		Cost:         day.Cost * rate,
+		Cost:         cost,
 		StandardCost: day.Cost,
-		UserCost:     day.ActualCost,
+		UserCost:     cost,
 	}
 }
 
@@ -366,11 +374,4 @@ func todayUsage(a *Account, now time.Time) DayUsage {
 		}
 	}
 	return DayUsage{}
-}
-
-func nonZero(rate float64) float64 {
-	if rate <= 0 {
-		return 1
-	}
-	return rate
 }

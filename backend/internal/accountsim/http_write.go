@@ -39,17 +39,23 @@ func (h *Handler) registerWriteRoutes() {
 	})
 }
 
-// write 在写锁下执行 fn，成功后落库。fn 返回的错误已由 fn 自己写入响应时返回 errHandled。
-func (h *Handler) write(c *gin.Context, fn func(v view) error) {
+// write 在副本上修改并落库。落库成功后才写一次成功响应；失败只写一次错误。
+// fn 已自己写入响应时返回 errHandled，此时不落库、不再写响应。
+func (h *Handler) write(c *gin.Context, fn func(v view) (any, error)) {
+	var payload any
 	err := h.svc.Update(c.Request.Context(), func(state *State, cfg Config, now time.Time) error {
-		return fn(view{state: state, cfg: cfg, now: now})
+		var callErr error
+		payload, callErr = fn(view{state: state, cfg: cfg, now: now})
+		return callErr
 	})
 	switch {
-	case err == nil, errors.Is(err, errHandled):
+	case errors.Is(err, errHandled):
 	case errors.Is(err, errAccountNotFound):
 		notFound(c)
-	default:
+	case err != nil:
 		internalError(c, err)
+	default:
+		response.Success(c, payload)
 	}
 }
 
@@ -63,14 +69,13 @@ func (h *Handler) mutate(op func(a *Account, now time.Time)) func(c *gin.Context
 		if !ok {
 			return
 		}
-		h.write(c, func(v view) error {
+		h.write(c, func(v view) (any, error) {
 			a := v.state.Accounts[id]
 			if a == nil {
-				return errAccountNotFound
+				return nil, errAccountNotFound
 			}
 			op(a, v.now)
-			response.Success(c, v.detail(a))
-			return nil
+			return v.detail(a), nil
 		})
 	}
 }
@@ -80,9 +85,17 @@ func touch(a *Account, now time.Time) { a.UpdatedAt = now }
 // clearError 与真实操作一致：恢复为 active 并清空错误信息。手动恢复后不再自动淘汰。
 func clearError(a *Account, now time.Time) {
 	a.Status, a.ErrorMessage = StatusActive, ""
-	a.RecoverAt, a.RetireOnErr = nil, false
+	clearRetirement(a)
 	a.Pin("status")
 	a.UpdatedAt = now
+}
+
+// clearRetirement 取消淘汰和删除计划。调度重新打开后，用量可以继续增加。
+func clearRetirement(a *Account) {
+	a.RetiredAt = nil
+	a.DeleteAt = time.Time{}
+	a.RetireOnErr = false
+	a.RecoverAt = nil
 }
 
 func clearRateLimit(a *Account, now time.Time) {
@@ -131,7 +144,11 @@ func (h *Handler) create(c *gin.Context, _ params) {
 	if !bind(c, &req) {
 		return
 	}
-	h.write(c, func(v view) error {
+	if !Supported(req.Platform, req.Type, defaultTier(req.Platform)) {
+		response.BadRequest(c, "Unsupported platform or account type")
+		return
+	}
+	h.write(c, func(v view) (any, error) {
 		v.state.LastID++
 		a := &Account{
 			ID: v.state.LastID, Name: req.Name, Platform: req.Platform, Type: req.Type,
@@ -161,8 +178,7 @@ func (h *Handler) create(c *gin.Context, _ params) {
 		// 管理员创建的账号不参与自动淘汰，字段也不被自动运营改写。
 		a.Pin("created")
 		v.state.Accounts[a.ID] = a
-		response.Success(c, v.detail(a))
-		return nil
+		return v.detail(a), nil
 	})
 }
 
@@ -256,6 +272,7 @@ func (req updateRequest) apply(a *Account, state *State, now time.Time) {
 		a.Status = req.Status
 		if req.Status == StatusActive {
 			a.ErrorMessage = ""
+			clearRetirement(a)
 		}
 		a.Pin("status")
 	}
@@ -291,14 +308,13 @@ func (h *Handler) update(c *gin.Context, p params) {
 		return
 	}
 	req.Schedulable = nil // 真实编辑接口不接受 schedulable，单独走 /schedulable。
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		a := v.state.Accounts[id]
 		if a == nil {
-			return errAccountNotFound
+			return nil, errAccountNotFound
 		}
 		req.apply(a, v.state, v.now)
-		response.Success(c, v.detail(a))
-		return nil
+		return v.detail(a), nil
 	})
 }
 
@@ -307,13 +323,12 @@ func (h *Handler) remove(c *gin.Context, p params) {
 	if !ok {
 		return
 	}
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		if v.state.Accounts[id] == nil {
-			return errAccountNotFound
+			return nil, errAccountNotFound
 		}
 		delete(v.state.Accounts, id)
-		response.Success(c, gin.H{"message": "Account deleted successfully"})
-		return nil
+		return gin.H{"message": "Account deleted successfully"}, nil
 	})
 }
 
@@ -322,10 +337,10 @@ func (h *Handler) duplicate(c *gin.Context, p params) {
 	if !ok {
 		return
 	}
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		src := v.state.Accounts[id]
 		if src == nil {
-			return errAccountNotFound
+			return nil, errAccountNotFound
 		}
 		v.state.LastID++
 		dup := cloneAccount(src)
@@ -336,19 +351,35 @@ func (h *Handler) duplicate(c *gin.Context, p params) {
 		dup.RetiredAt = nil
 		dup.Pin("created")
 		v.state.Accounts[dup.ID] = dup
-		response.Success(c, v.detail(dup))
-		return nil
+		return v.detail(dup), nil
 	})
 }
 
 func cloneAccount(a *Account) *Account {
+	if a == nil {
+		return nil
+	}
 	out := *a
-	out.GroupIDs = append([]int64{}, a.GroupIDs...)
+	out.GroupIDs = append([]int64(nil), a.GroupIDs...)
 	out.Credentials = merged(nil, a.Credentials)
 	out.Extra = merged(nil, a.Extra)
-	out.Pinned = map[string]bool{}
-	for k, v := range a.Pinned {
-		out.Pinned[k] = v
+	if a.Pinned != nil {
+		out.Pinned = make(map[string]bool, len(a.Pinned))
+		for k, v := range a.Pinned {
+			out.Pinned[k] = v
+		}
+	}
+	if a.Days != nil {
+		out.Days = make([]DayUsage, len(a.Days))
+		for i := range a.Days {
+			out.Days[i] = a.Days[i]
+			if a.Days[i].Models != nil {
+				out.Days[i].Models = make(map[string]int64, len(a.Days[i].Models))
+				for name, count := range a.Days[i].Models {
+					out.Days[i].Models[name] = count
+				}
+			}
+		}
 	}
 	return &out
 }
@@ -364,16 +395,18 @@ func (h *Handler) setSchedulable(c *gin.Context, p params) {
 	if !bind(c, &req) {
 		return
 	}
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		a := v.state.Accounts[id]
 		if a == nil {
-			return errAccountNotFound
+			return nil, errAccountNotFound
 		}
 		a.Schedulable = req.Schedulable
 		a.Pin("schedulable")
+		if req.Schedulable && a.Status == StatusActive {
+			clearRetirement(a)
+		}
 		a.UpdatedAt = v.now
-		response.Success(c, v.detail(a))
-		return nil
+		return v.detail(a), nil
 	})
 }
 
@@ -404,14 +437,13 @@ func (h *Handler) clearTempUnschedulable(c *gin.Context, p params) {
 	if !ok {
 		return
 	}
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		a := v.state.Accounts[id]
 		if a == nil {
-			return errAccountNotFound
+			return nil, errAccountNotFound
 		}
 		a.TempUnschedUntil, a.TempUnschedReason = nil, ""
-		response.Success(c, gin.H{"message": "Temp unschedulable cleared successfully"})
-		return nil
+		return gin.H{"message": "Temp unschedulable cleared successfully"}, nil
 	})
 }
 
@@ -436,7 +468,7 @@ func (h *Handler) batchDelete(c *gin.Context, _ params) {
 	if !ok {
 		return
 	}
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		success, failed := []int64{}, []int64{}
 		errs := []gin.H{}
 		for _, id := range ids {
@@ -448,11 +480,10 @@ func (h *Handler) batchDelete(c *gin.Context, _ params) {
 			delete(v.state.Accounts, id)
 			success = append(success, id)
 		}
-		response.Success(c, gin.H{
+		return gin.H{
 			"total": len(ids), "success": len(success), "failed": len(failed),
 			"success_ids": success, "failed_ids": failed, "errors": errs,
-		})
-		return nil
+		}, nil
 	})
 }
 
@@ -463,7 +494,7 @@ func (h *Handler) batch(op func(a *Account, now time.Time)) func(c *gin.Context,
 		if !ok {
 			return
 		}
-		h.write(c, func(v view) error {
+		h.write(c, func(v view) (any, error) {
 			success := 0
 			errs := []gin.H{}
 			for _, id := range ids {
@@ -475,8 +506,7 @@ func (h *Handler) batch(op func(a *Account, now time.Time)) func(c *gin.Context,
 				op(a, v.now)
 				success++
 			}
-			response.Success(c, gin.H{"total": len(ids), "success": success, "failed": len(errs), "errors": errs})
-			return nil
+			return gin.H{"total": len(ids), "success": success, "failed": len(errs), "errors": errs}, nil
 		})
 	}
 }
@@ -497,7 +527,7 @@ func (h *Handler) bulkUpdate(c *gin.Context, _ params) {
 	if !bind(c, &req) {
 		return
 	}
-	h.write(c, func(v view) error {
+	h.write(c, func(v view) (any, error) {
 		ids := req.AccountIDs
 		if len(ids) == 0 && req.Filters != nil {
 			f := listFilter{
@@ -517,7 +547,7 @@ func (h *Handler) bulkUpdate(c *gin.Context, _ params) {
 		}
 		if len(ids) == 0 {
 			response.BadRequest(c, "account_ids or filters is required")
-			return errHandled
+			return nil, errHandled
 		}
 		success, failed := []int64{}, []int64{}
 		results := []gin.H{}
@@ -532,10 +562,9 @@ func (h *Handler) bulkUpdate(c *gin.Context, _ params) {
 			success = append(success, id)
 			results = append(results, gin.H{"account_id": id, "success": true})
 		}
-		response.Success(c, gin.H{
+		return gin.H{
 			"success": len(success), "failed": len(failed),
 			"success_ids": success, "failed_ids": failed, "results": results,
-		})
-		return nil
+		}, nil
 	})
 }
