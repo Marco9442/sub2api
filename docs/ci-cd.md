@@ -62,7 +62,7 @@ PR 附版本说明和相对 `main` 的改动范围。不试合并，不生成冲
 
 `release.yml` 由 `v*` tag 和已有的 `workflow_dispatch` 触发。推 `v*` tag 时，运行的是该 tag 上的 workflow 和 `.github/release-tools`。守卫先进入这个提交。
 
-`v0.2.21` 和 `v0.2.21-fork.1` 已经发布。`v0.2.21-fork.1` 打在 `backend/cmd/server/VERSION` 仍为 `0.2.21` 的提交上。GHCR 的 `0.2.21`、`latest`、`0.2`、`0` 仍是 `v0.2.21` 那一次发布。下一次同一 `VERSION` 的 fork tag 是 `v0.2.21-fork.2`。上游版本变化后，序号从 `1` 起，不补零。
+`v0.2.21` 和 `v0.2.21-fork.1` 已经发布。`v0.2.21-fork.1` 打在 `backend/cmd/server/VERSION` 仍为 `0.2.21` 的提交上。GHCR 的 `0.2.21`、`latest`、`0.2`、`0` 仍是 `v0.2.21` 那一次发布。同一 `VERSION` 的下一个序号取已有 tag 的最大序号加 1，不在本文写死。上游版本变化后，序号从 `1` 起，不补零。
 
 仓库里的版本文件只有 `backend/cmd/server/VERSION`。fork 发布不把 `X.Y.Z-fork.N` 写进这个文件。正式发布时，`plan()` 把 tag 版本写进作业工作区的该文件，并上传 `version-file`。git 里的文件保持上游版本。
 
