@@ -184,6 +184,57 @@ func TestConsumeMonitorSSE_AnthropicStartIgnoresNonTextAndEmpty(t *testing.T) {
 	require.False(t, failed)
 }
 
+func TestConsumeMonitorSSE_GeminiThoughtIsNotAnswer(t *testing.T) {
+	thoughtOnly := strings.Join([]string{
+		`data: {"candidates":[{"content":{"parts":[{"text":"planning the answer","thought":true}]},"finishReason":"MAX_TOKENS"}]}`,
+		"",
+	}, "\n")
+	_, text, completed, failed, _ := consumeMonitorSSE(strings.NewReader(thoughtOnly), geminiStreamProtocol, time.Now())
+	require.Empty(t, text)
+	require.False(t, completed)
+	require.False(t, failed)
+
+	mixed := strings.Join([]string{
+		`data: {"candidates":[{"content":{"parts":[{"text":"planning","thought":true},{"text":"pong"}]}}]}`,
+		"",
+	}, "\n")
+	_, text, completed, failed, _ = consumeMonitorSSE(strings.NewReader(mixed), geminiStreamProtocol, time.Now())
+	require.Equal(t, "pong", text)
+	require.True(t, completed)
+	require.False(t, failed)
+}
+
+func TestConsumeMonitorSSE_GeminiThoughtDoesNotStartTTFT(t *testing.T) {
+	head := strings.Join([]string{
+		`data: {"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]}}]}`,
+		"",
+		"",
+	}, "\n")
+	tail := strings.Join([]string{
+		`data: {"candidates":[{"content":{"parts":[{"text":"pong"}]},"finishReason":"STOP"}]}`,
+		"",
+	}, "\n")
+	delay := 150 * time.Millisecond
+	pr, pw := io.Pipe()
+	t.Cleanup(func() {
+		_ = pr.Close()
+		_ = pw.Close()
+	})
+	go func() {
+		defer pw.Close()
+		if _, err := io.WriteString(pw, head); err != nil {
+			return
+		}
+		time.Sleep(delay)
+		_, _ = io.WriteString(pw, tail)
+	}()
+	measured, text, completed, failed, reason := consumeMonitorSSE(pr, geminiStreamProtocol, time.Now())
+	require.Equal(t, "pong", text, reason)
+	require.True(t, completed)
+	require.False(t, failed)
+	require.GreaterOrEqual(t, measured, delay)
+}
+
 func TestConsumeMonitorSSE_AnthropicTruncatedAfterStartTextIsNotSuccess(t *testing.T) {
 	raw := strings.Join([]string{
 		"event: content_block_start",

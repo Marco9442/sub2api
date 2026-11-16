@@ -358,12 +358,31 @@ var anthropicStreamProtocol = monitorStreamProtocol{
 
 var geminiStreamProtocol = monitorStreamProtocol{
 	text: func(_, data string) string {
-		return gjson.Get(data, "candidates.0.content.parts.0.text").String()
+		return geminiAnswerText(data)
 	},
 	done: func(_, data string) bool {
 		return gjson.Get(data, "candidates.0.finishReason").String() != ""
 	},
 	fail: func(_, data string) bool { return gjson.Get(data, "error").Exists() },
+}
+
+// geminiAnswerText 只取非思考回答。思考摘要不计入 TTFT，也不单独构成成功。
+func geminiAnswerText(data string) string {
+	parts := gjson.Get(data, "candidates.0.content.parts")
+	if !parts.IsArray() {
+		return ""
+	}
+	var b strings.Builder
+	parts.ForEach(func(_, part gjson.Result) bool {
+		if part.Get("thought").Bool() {
+			return true
+		}
+		if text := part.Get("text").String(); text != "" {
+			b.WriteString(text)
+		}
+		return true
+	})
+	return b.String()
 }
 
 func readCustomStream(ctx context.Context, fullURL string, body []byte, headers map[string]string, apiKey string, protocol monitorStreamProtocol, start time.Time) (time.Duration, string, bool, int, string) {
