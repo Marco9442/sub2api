@@ -36,7 +36,7 @@ export default {
     tpsMax: 'token/s 上限',
     tpsInvalid: '需满足 0 ≤ 下限 < 上限。',
     status: '监控状态',
-    statusHint: '按页面上已启用的监控计算。失败和出错算红色；降级、失败和出错都算黄色。两边都达到时显示红色。',
+    statusHint: '总监控状态阈值，红色优先级更高',
     statusYellow: '黄色阈值（%）',
     statusRed: '红色阈值（%）',
     statusInvalid: '黄色和红色阈值都要是 1 到 100 的整数。',

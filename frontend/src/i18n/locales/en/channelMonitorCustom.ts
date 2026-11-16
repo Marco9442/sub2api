@@ -36,7 +36,7 @@ export default {
     tpsMax: 'token/s maximum',
     tpsInvalid: 'Requires 0 ≤ minimum < maximum.',
     status: 'Monitor status',
-    statusHint: 'Counted from the enabled monitors on the page. Failed and error count as red. Degraded, failed, and error all count as yellow. Red wins when both are reached.',
+    statusHint: 'Overall status thresholds. Red has higher priority.',
     statusYellow: 'Yellow threshold (%)',
     statusRed: 'Red threshold (%)',
     statusInvalid: 'Both thresholds must be integers from 1 to 100.',
