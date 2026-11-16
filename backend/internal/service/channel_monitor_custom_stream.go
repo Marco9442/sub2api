@@ -378,7 +378,7 @@ func geminiAnswerText(data string) string {
 			return true
 		}
 		if text := part.Get("text").String(); text != "" {
-			b.WriteString(text)
+			_, _ = b.WriteString(text)
 		}
 		return true
 	})
