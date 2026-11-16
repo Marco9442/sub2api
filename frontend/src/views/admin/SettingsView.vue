@@ -7161,32 +7161,10 @@
                 <label class="input-label">
                   {{ t('admin.settings.features.channelMonitor.mode') }}
                 </label>
-                <div class="mt-1.5 inline-flex w-full max-w-md rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-dark-600 dark:bg-dark-900/40">
-                  <button
-                    type="button"
-                    class="inline-flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
-                    :class="
-                      form.channel_monitor_mode === 'v2'
-                        ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
-                        : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                    "
-                    @click="form.channel_monitor_mode = 'v2'"
-                  >
-                    {{ t('admin.settings.features.channelMonitor.modeV2') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="inline-flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
-                    :class="
-                      form.channel_monitor_mode === 'v1'
-                        ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
-                        : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                    "
-                    @click="form.channel_monitor_mode = 'v1'"
-                  >
-                    {{ t('admin.settings.features.channelMonitor.modeV1') }}
-                  </button>
-                </div>
+                <ChannelMonitorSettingsMode
+                  :mode="form.channel_monitor_mode"
+                  @update:mode="form.channel_monitor_mode = $event"
+                />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{
                     form.channel_monitor_mode === 'custom'
@@ -8993,6 +8971,7 @@ import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vu
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
+import ChannelMonitorSettingsMode from "@/components/admin/settings/ChannelMonitorSettingsMode.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
@@ -9684,7 +9663,10 @@ type SettingsForm = Omit<
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
   | "openai_oauth_scheduling_rate_multiplier"
+  | "channel_monitor_mode"
 > & {
+  /** Form always binds a concrete mode (SystemSettings marks this optional). */
+  channel_monitor_mode: "v1" | "v2" | "custom";
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
@@ -10018,7 +10000,7 @@ const form = reactive<SettingsForm>({
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
-  channel_monitor_mode: 'v1' as 'v1' | 'v2' | 'custom',
+  channel_monitor_mode: "v1",
   channel_monitor_default_interval_seconds: 60,
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
