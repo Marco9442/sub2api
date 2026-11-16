@@ -23,7 +23,14 @@
           >
             {{ statusLabel(r.status) }}
           </span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatLatency(r.latency_ms) }} ms</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">
+            <template v-if="r.metric_kind === 'quota'">{{ t('channelMonitorCustom.quota') }}</template>
+            <template v-else-if="r.metric_kind === 'ttft'">
+              {{ r.latency_ms == null ? t('channelMonitorCustom.hidden') : `${formatLatency(r.latency_ms)} ms` }}
+              <template v-if="r.tokens_per_sec != null"> · {{ r.tokens_per_sec.toFixed(3) }} token/s</template>
+            </template>
+            <template v-else>{{ formatLatency(r.latency_ms) }} ms</template>
+          </span>
         </div>
       </div>
     </div>

@@ -1,0 +1,129 @@
+package admin
+
+import (
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+
+	"github.com/gin-gonic/gin"
+)
+
+type channelMonitorCustomOverrideRequest struct {
+	TTFTAdjustEnabled *bool    `json:"ttft_adjust_enabled"`
+	TTFTMultiplier    *float64 `json:"ttft_multiplier"`
+	TTFTMinMs         *int     `json:"ttft_min_ms"`
+	TTFTMaxMs         *int     `json:"ttft_max_ms"`
+	TPSEnabled        *bool    `json:"tps_enabled"`
+	TPSMin            *float64 `json:"tps_min"`
+	TPSMax            *float64 `json:"tps_max"`
+}
+
+type channelMonitorCustomConfigRequest struct {
+	Prompt            string  `json:"prompt"`
+	YellowSeconds     int     `json:"yellow_seconds"`
+	RedSeconds        int     `json:"red_seconds"`
+	TTFTAdjustEnabled bool    `json:"ttft_adjust_enabled"`
+	TTFTMultiplier    float64 `json:"ttft_multiplier"`
+	TTFTMinMs         int     `json:"ttft_min_ms"`
+	TTFTMaxMs         int     `json:"ttft_max_ms"`
+	TPSEnabled        bool    `json:"tps_enabled"`
+	TPSMin            float64 `json:"tps_min"`
+	TPSMax            float64 `json:"tps_max"`
+	// 空数组表示使用默认的 7/15/30 天。
+	AvailabilityWindows []availabilityWindowRequest `json:"availability_windows"`
+	// 省略时按 30。0 无法和缺字段区分，保存前补成默认值。
+	StatusYellowPercent int `json:"status_yellow_percent"`
+	StatusRedPercent    int `json:"status_red_percent"`
+}
+
+type availabilityWindowRequest struct {
+	Amount int    `json:"amount"`
+	Unit   string `json:"unit"`
+}
+
+type channelMonitorModeRequest struct {
+	Mode   string                            `json:"mode" binding:"required,oneof=v1 v2 custom"`
+	Custom channelMonitorCustomConfigRequest `json:"custom"`
+}
+
+func customOverrideFromRequest(req *channelMonitorCustomOverrideRequest) *service.ChannelMonitorCustomOverride {
+	if req == nil {
+		return nil
+	}
+	return &service.ChannelMonitorCustomOverride{
+		TTFTAdjustEnabled: req.TTFTAdjustEnabled,
+		TTFTMultiplier:    req.TTFTMultiplier,
+		TTFTMinMs:         req.TTFTMinMs,
+		TTFTMaxMs:         req.TTFTMaxMs,
+		TPSEnabled:        req.TPSEnabled,
+		TPSMin:            req.TPSMin,
+		TPSMax:            req.TPSMax,
+	}
+}
+
+func availabilityWindowsFromRequest(req []availabilityWindowRequest) []service.AvailabilityWindow {
+	out := make([]service.AvailabilityWindow, 0, len(req))
+	for _, w := range req {
+		out = append(out, service.AvailabilityWindow{Amount: w.Amount, Unit: w.Unit})
+	}
+	return out
+}
+
+func customConfigFromRequest(req channelMonitorCustomConfigRequest) service.ChannelMonitorCustomConfig {
+	prompt := req.Prompt
+	yellow, red := req.YellowSeconds, req.RedSeconds
+	if prompt == "" && yellow == 0 && red == 0 {
+		prompt = "ping"
+		yellow, red = 2, 8
+	}
+	multiplier := req.TTFTMultiplier
+	if multiplier == 0 {
+		multiplier = 1
+	}
+	return service.ChannelMonitorCustomConfig{
+		Prompt:              prompt,
+		YellowSeconds:       yellow,
+		RedSeconds:          red,
+		TTFTAdjustEnabled:   req.TTFTAdjustEnabled,
+		TTFTMultiplier:      multiplier,
+		TTFTMinMs:           req.TTFTMinMs,
+		TTFTMaxMs:           req.TTFTMaxMs,
+		TPSEnabled:          req.TPSEnabled,
+		TPSMin:              req.TPSMin,
+		TPSMax:              req.TPSMax,
+		AvailabilityWindows: availabilityWindowsFromRequest(req.AvailabilityWindows),
+		StatusYellowPercent: statusPercentOrDefault(req.StatusYellowPercent),
+		StatusRedPercent:    statusPercentOrDefault(req.StatusRedPercent),
+	}
+}
+
+func statusPercentOrDefault(v int) int {
+	if v == 0 {
+		return 30
+	}
+	return v
+}
+
+// GetMode GET /api/v1/admin/channel-monitors/mode
+func (h *ChannelMonitorHandler) GetMode(c *gin.Context) {
+	view := h.monitorService.GetMonitorMode(c.Request.Context())
+	response.Success(c, gin.H{
+		"mode":                 view.Mode,
+		"enabled":              view.Enabled,
+		"thresholds_persisted": view.ThresholdsPersisted,
+		"custom":               view.Custom,
+	})
+}
+
+// UpdateMode PUT /api/v1/admin/channel-monitors/mode
+func (h *ChannelMonitorHandler) UpdateMode(c *gin.Context) {
+	var req channelMonitorModeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.monitorService.SaveMonitorMode(c.Request.Context(), req.Mode, customConfigFromRequest(req.Custom)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	h.GetMode(c)
+}

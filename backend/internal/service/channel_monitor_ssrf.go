@@ -2,9 +2,16 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net"
+	"net/http"
 	"strings"
 )
+
+const monitorMaxRedirects = 10
+
+// errMonitorRedirectToLoopback 公网请求链跳进本机探测例外。
+var errMonitorRedirectToLoopback = errors.New("blocked by SSRF policy: redirect to local probe address")
 
 // SSRF 防护 helper：
 //   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
@@ -109,12 +116,40 @@ func isPrivateOrLoopbackHost(ctx context.Context, hostname string) (bool, error)
 	return false, nil
 }
 
+// monitorCheckRedirect 拒绝公网请求链进入本机探测例外。
+// 显式本机监控之间的跳转和普通公网跳转仍允许，并保留 10 次上限。
+func monitorCheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= monitorMaxRedirects {
+		return errors.New("stopped after 10 redirects")
+	}
+	if !isLoopbackExceptionRequest(req) {
+		return nil
+	}
+	for _, prev := range via {
+		if !isLoopbackExceptionRequest(prev) {
+			return errMonitorRedirectToLoopback
+		}
+	}
+	return nil
+}
+
+func isLoopbackExceptionRequest(req *http.Request) bool {
+	if req == nil || req.URL == nil {
+		return false
+	}
+	return isExactLoopbackExceptionDial(req.URL.Hostname(), req.URL.Port())
+}
+
 // safeDialContext 在真实 dial 前再次校验目标 IP，防止 DNS rebinding。
 // 解析 hostname 后逐个 IP 尝试连接，命中私网即拒绝（即便 validateEndpoint 时返回的是公网 IP）。
 func safeDialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
+	}
+	// 只按字面主机和端口放行，不用 ip.Equal，避免 IPv4-mapped 地址被当成 127.0.0.1。
+	if isExactLoopbackExceptionDial(host, port) {
+		return monitorDialer.DialContext(ctx, network, address)
 	}
 	// 字面量 IP 走快速路径。
 	if ip := net.ParseIP(host); ip != nil {

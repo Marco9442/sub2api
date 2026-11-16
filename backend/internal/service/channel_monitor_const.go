@@ -217,4 +217,44 @@ var (
 		"CHANNEL_MONITOR_MODE_MISMATCH",
 		"channel monitor mode does not allow this operation",
 	)
+	ErrChannelMonitorInvalidThreshold = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_THRESHOLD",
+		"yellow_seconds and red_seconds must satisfy 0 < yellow < red, and red must not exceed the shortest actual detection interval",
+	)
+	ErrChannelMonitorIntervalBelowRed = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INTERVAL_BELOW_RED",
+		"interval_seconds - jitter_seconds must be greater than or equal to the red threshold",
+	)
+	ErrChannelMonitorInvalidPrompt = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_PROMPT",
+		"custom detection prompt must be 1-500 characters",
+	)
+	ErrChannelMonitorInvalidTTFT = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_TTFT",
+		"ttft adjustment requires multiplier > 0 and 0 <= min_ms < max_ms",
+	)
+	ErrChannelMonitorInvalidTPS = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_TPS",
+		"token/s range requires 0 <= min < max",
+	)
+	ErrChannelMonitorInvalidStatusPercent = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_STATUS_PERCENT",
+		"status percent must be an integer from 1 to 100",
+	)
+	ErrChannelMonitorInvalidWindows = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_WINDOWS",
+		"availability windows must be 1-6 unique entries of 1-60 minutes or 1-30 days",
+	)
+	ErrChannelMonitorCustomStreamRequired = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_CUSTOM_STREAM_REQUIRED",
+		customProbeRequiresStream,
+	)
+	// ErrChannelMonitorCustomModeStale 通用设置试图进入尚未生效的 Custom。
+	ErrChannelMonitorCustomModeStale = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_CUSTOM_MODE_STALE",
+		"channel monitor mode is stale; switch to Custom on the channel monitor page, then save again",
+	)
 )
+
+// customProbeRequiresStream 是 Custom 拒绝非流式探测时给管理员和历史记录的同一句说明。
+const customProbeRequiresStream = "custom probe requires a streaming request; omit stream or set it to true"

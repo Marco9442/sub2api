@@ -95,6 +95,24 @@ describe('MonitorCard quota snapshot visibility', () => {
     expect(wrapper.text()).toContain('monitorCommon.checkMode.quota')
   })
 
+  it('does not show the upstream quota error on the user card', () => {
+    isQuotaVisible.mockReturnValue(true)
+    const wrapper = mountCard(
+      makeItem({
+        latest_quota: {
+          source: 'cn_balance',
+          success: false,
+          error: 'Authentication failed (HTTP 401)',
+          fetched_at: '2026-08-18T00:00:00Z',
+        },
+      }),
+    )
+    expect(wrapper.text()).not.toContain('Authentication failed')
+    expect(wrapper.text()).not.toContain('monitorCommon.quota.unavailable')
+    expect(wrapper.find('[data-testid="monitor-quota-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
+  })
+
   it('keeps the real model name for probe monitors', () => {
     const wrapper = mountCard(makeItem({ primary_model: 'claude-sonnet-4-5' }))
     expect(wrapper.text()).toContain('claude-sonnet-4-5')

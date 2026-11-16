@@ -42,6 +42,7 @@
         :window="window"
         :availability-value="resolveAvailability(item)"
         :countdown-seconds="countdownSeconds"
+        :metric="metric"
         @click="emit('cardClick', item)"
       />
     </div>
@@ -54,13 +55,14 @@ import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: UserMonitorView[]
-  window: '7d' | '15d' | '30d'
+  window: string
   countdownSeconds: number
   loading: boolean
   detailCache: Record<number, UserMonitorDetail>
-}>()
+  metric?: 'latency' | 'ttft'
+}>(), { metric: 'latency' })
 
 const emit = defineEmits<{
   (e: 'cardClick', item: UserMonitorView): void
@@ -69,6 +71,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 function resolveAvailability(item: UserMonitorView): number | null {
+  if (props.metric === 'ttft') {
+    return item.window_availability ?? null
+  }
   if (props.window === '7d') {
     return item.availability_7d ?? null
   }
