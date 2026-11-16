@@ -36,6 +36,9 @@ export function isAccountSimPage(pathname: string = currentPathname()): boolean 
 // 静态表，不读号池。改写后会得到空对象，并被前端缓存成“没有映射”。
 const ACCOUNT_SIM_DIRECT_PATHS = new Set(['/admin/accounts/antigravity/default-model-mapping'])
 
+// 只切这一条仪表盘接口。账号统计的模型明细会读它，其余仪表盘仍走真实接口。
+const ACCOUNT_SIM_EXACT_PATHS = new Set(['/admin/dashboard/user-breakdown'])
+
 // 按下导入时记住走模拟接口。只覆盖这一次操作，离开页面要取消还没发出的请求。
 let pinnedActions = 0
 
@@ -59,6 +62,9 @@ export function toAccountSimPath(path: string, pathname: string = currentPathnam
   if (!accountSimActive(pathname)) return path
   const [route] = path.split(/[?#]/, 1)
   if (ACCOUNT_SIM_DIRECT_PATHS.has(route)) return path
+  if (ACCOUNT_SIM_EXACT_PATHS.has(route)) {
+    return ACCOUNT_SIM_API_PREFIX + path.slice('/admin'.length)
+  }
   const switched = ACCOUNT_SIM_SWITCHED_PREFIXES.some(
     (prefix) => route === prefix || route.startsWith(`${prefix}/`)
   )

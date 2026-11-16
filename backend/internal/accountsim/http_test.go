@@ -685,6 +685,16 @@ func TestBulkUpdateWithoutIDsDoesNotSave(t *testing.T) {
 	}
 }
 
+func TestUserBreakdownIsEmptyAndDoesNotSave(t *testing.T) {
+	router, store := newTestServer(t)
+	status, resp := call(t, router, http.MethodGet, "/dashboard/user-breakdown?start_date=2026-11-01&end_date=2026-11-15", "")
+	data := decode[map[string]any](t, resp.Data)
+	users, ok := data["users"].([]any)
+	if status != http.StatusOK || !ok || len(users) != 0 || data["start_date"] != "2026-11-01" || data["end_date"] != "2026-11-15" || store.saves != 0 {
+		t.Fatalf("模型明细应为空且不落库: %d %+v saves=%d", status, data, store.saves)
+	}
+}
+
 func TestCreateRejectsUnsupportedPlatform(t *testing.T) {
 	router, store := newTestServer(t)
 	status, resp := call(t, router, http.MethodPost, "/accounts", `{"name":"x","platform":"unknown","type":"apikey","credentials":{"api_key":"k"}}`)

@@ -29,7 +29,17 @@ func (h *Handler) registerRoutes() {
 	h.handle(http.MethodGet, "proxies/all", h.proxiesAll)
 	h.handle(http.MethodGet, "config", h.getConfig)
 	h.handle(http.MethodPut, "config", h.putConfig)
+	h.handle(http.MethodGet, "dashboard/user-breakdown", h.userBreakdown)
 	h.registerWriteRoutes()
+}
+
+// userBreakdown 是统计弹窗模型明细的空结果。不读真实用户，也不写状态。
+func (h *Handler) userBreakdown(c *gin.Context, _ params) {
+	response.Success(c, gin.H{
+		"users":      []any{},
+		"start_date": c.Query("start_date"),
+		"end_date":   c.Query("end_date"),
+	})
 }
 
 // read 在读锁下执行 fn，加载失败时写入 500。

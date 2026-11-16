@@ -12,6 +12,7 @@ import { toAccountSimPath, ACCOUNT_SIM_PAGE_PATH } from '@/api/accountSim'
 // 可以在模拟页直连真实接口的请求：只读、与业务数据无关，且布局层也会发起。
 const PASSTHROUGH: Record<string, string> = {
   '/admin/settings': '只读系统设置（配额提醒全局开关），布局的设置 store 也会读取',
+  '/admin/accounts/antigravity/default-model-mapping': '静态模型映射，不读号池',
 }
 
 const SRC = resolve(process.cwd(), 'src')
@@ -79,6 +80,37 @@ function functionPaths(file: string, name: string): string[] {
   return adminPathsIn(end < 0 ? rest : rest.slice(0, end))
 }
 
+type Binding = { local: string; imported: string }
+
+// 解析 import 子句里的默认导入和具名导入。跳过 type。
+function importBindings(clause: string): Binding[] {
+  const bindings: Binding[] = []
+  const namedAt = clause.indexOf('{')
+  const head = (namedAt < 0 ? clause : clause.slice(0, namedAt)).replace(/,/g, ' ').trim()
+  if (head.startsWith('*')) {
+    const alias = head.match(/\*\s+as\s+(\w+)/)
+    if (alias) bindings.push({ local: alias[1], imported: '*' })
+  } else if (head) {
+    const name = head.match(/^(\w+)/)
+    if (name) bindings.push({ local: name[1], imported: 'default' })
+  }
+  if (namedAt >= 0) {
+    const named = clause.slice(namedAt + 1, clause.indexOf('}', namedAt))
+    for (const part of named.split(',')) {
+      const piece = part.trim()
+      if (!piece || piece.startsWith('type ')) continue
+      const match = piece.match(/^(\w+)(?:\s+as\s+(\w+))?$/)
+      if (!match) continue
+      bindings.push({ local: match[2] || match[1], imported: match[1] })
+    }
+  }
+  return bindings
+}
+
+function addFunctionPaths(paths: Set<string>, file: string, name: string) {
+  functionPaths(file, name).forEach((path) => paths.add(path))
+}
+
 function requestedPaths(): string[] {
   const modules = adminModules()
   const paths = new Set<string>()
@@ -87,12 +119,22 @@ function requestedPaths(): string[] {
     adminPathsIn(source).forEach((path) => paths.add(path))
     for (const match of source.matchAll(/adminAPI\.(\w+)\s*\.(\w+)/g)) {
       const module = modules[match[1]]
-      if (module) functionPaths(module, match[2]).forEach((path) => paths.add(path))
+      if (module) addFunctionPaths(paths, module, match[2])
     }
-    // 直接从接口文件导入的写法：import { accountsAPI } from '@/api/admin/accounts'
-    for (const match of source.matchAll(/import\s+\{?\s*(\w+)[^'"]*from\s+'@\/api\/admin\/(\w+)'/g)) {
-      for (const use of source.matchAll(new RegExp(`\\b${match[1]}\\.(\\w+)`, 'g'))) {
-        functionPaths(match[2], use[1]).forEach((path) => paths.add(path))
+    for (const match of source.matchAll(/import\s+(type\s+)?((?:(?!\bfrom\b)[\s\S])*?)\s+from\s+['"]@\/api\/admin\/(\w+)['"]/g)) {
+      if (match[1]) continue
+      for (const binding of importBindings(match[2])) {
+        if (binding.imported === 'default' || binding.imported === '*') {
+          for (const use of source.matchAll(new RegExp(`\\b${binding.local}\\.(\\w+)`, 'g'))) {
+            addFunctionPaths(paths, match[3], use[1])
+          }
+          continue
+        }
+        const called = new RegExp(`\\b${binding.local}\\s*(?:\\?\\.\\s*)?\\(`).test(source)
+        if (called) addFunctionPaths(paths, match[3], binding.imported)
+        for (const use of source.matchAll(new RegExp(`\\b${binding.local}\\.(\\w+)`, 'g'))) {
+          addFunctionPaths(paths, match[3], use[1])
+        }
       }
     }
   }

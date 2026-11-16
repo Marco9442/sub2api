@@ -22,6 +22,9 @@ describe('账号管理 #2 请求切换', () => {
     expect(toAccountSimPath('/admin/groups/all', page)).toBe('/admin/account-sim/groups/all')
     expect(toAccountSimPath('/admin/proxies/all', page)).toBe('/admin/account-sim/proxies/all')
     expect(toAccountSimPath('/admin/grok/accounts/3/quota', page)).toBe('/admin/account-sim/grok/accounts/3/quota')
+    expect(toAccountSimPath('/admin/dashboard/user-breakdown?start_date=2026-11-01', page)).toBe(
+      '/admin/account-sim/dashboard/user-breakdown?start_date=2026-11-01'
+    )
   })
 
   it('不改写其他页面、其他接口和前缀相似的路径', () => {
@@ -29,6 +32,7 @@ describe('账号管理 #2 请求切换', () => {
     const page = '/admin/accounts-2'
     expect(toAccountSimPath('/admin/settings', page)).toBe('/admin/settings')
     expect(toAccountSimPath('/admin/payment/config', page)).toBe('/admin/payment/config')
+    expect(toAccountSimPath('/admin/dashboard/snapshot-v2', page)).toBe('/admin/dashboard/snapshot-v2')
     expect(toAccountSimPath('/admin/accountsx', page)).toBe('/admin/accountsx')
     expect(toAccountSimPath('/auth/me', page)).toBe('/auth/me')
     expect(toAccountSimPath('/admin/account-sim/config', page)).toBe('/admin/account-sim/config')
