@@ -1,6 +1,6 @@
 import type { ChannelMonitorCustomConfig, ChannelMonitorCustomOverride } from '@/api/admin/channelMonitor'
 
-export type CustomConfigErrors = Partial<Record<'prompt' | 'thresholds' | 'ttft' | 'tps', true>>
+export type CustomConfigErrors = Partial<Record<'prompt' | 'thresholds' | 'ttft' | 'tps' | 'status', true>>
 
 export function defaultCustomConfig(): ChannelMonitorCustomConfig {
   return {
@@ -14,6 +14,8 @@ export function defaultCustomConfig(): ChannelMonitorCustomConfig {
     tps_enabled: false,
     tps_min: 0,
     tps_max: 0,
+    status_yellow_percent: 30,
+    status_red_percent: 30,
   }
 }
 
@@ -26,7 +28,12 @@ export function customConfigErrors(cfg: ChannelMonitorCustomConfig): CustomConfi
     errors.ttft = true
   }
   if (cfg.tps_enabled && !ordered(cfg.tps_min, cfg.tps_max, true)) errors.tps = true
+  if (!validPercent(cfg.status_yellow_percent) || !validPercent(cfg.status_red_percent)) errors.status = true
   return errors
+}
+
+function validPercent(value: unknown): boolean {
+  return isNumber(value) && Number.isInteger(value) && value >= 1 && value <= 100
 }
 
 export function hasCustomOverride(override: ChannelMonitorCustomOverride | null | undefined): boolean {

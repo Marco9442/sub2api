@@ -237,6 +237,10 @@ var (
 		"CHANNEL_MONITOR_INVALID_TPS",
 		"token/s range requires 0 <= min < max",
 	)
+	ErrChannelMonitorInvalidStatusPercent = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_STATUS_PERCENT",
+		"status percent must be an integer from 1 to 100",
+	)
 	ErrChannelMonitorInvalidWindows = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_WINDOWS",
 		"availability windows must be 1-6 unique entries of 1-60 minutes or 1-30 days",

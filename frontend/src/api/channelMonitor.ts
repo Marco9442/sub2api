@@ -52,6 +52,9 @@ export interface UserMonitorListResponse {
   items: UserMonitorView[]
   // Custom 模式下管理员配置的时间档；其他模式为空。
   windows?: { amount: number; unit: 'm' | 'd' }[]
+  // Custom 模式下用户页右上角的黄、红百分比。其他模式不返回。
+  status_yellow_percent?: number
+  status_red_percent?: number
 }
 
 export interface UserMonitorModelDetail {

@@ -121,6 +121,22 @@
         </div>
         <p v-if="errors.tps" class="input-error-text">{{ t('channelMonitorCustom.tpsInvalid') }}</p>
       </section>
+
+      <section data-section="status" :class="groupClass">
+        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.status') }}</h3>
+        <p class="input-hint">{{ t('channelMonitorCustom.statusHint') }}</p>
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label>
+            <span class="input-label">{{ t('channelMonitorCustom.statusYellow') }}</span>
+            <input v-model.number="custom.status_yellow_percent" type="number" min="1" max="100" step="1" class="input" :class="{ 'input-error': errors.status }" />
+          </label>
+          <label>
+            <span class="input-label">{{ t('channelMonitorCustom.statusRed') }}</span>
+            <input v-model.number="custom.status_red_percent" type="number" min="1" max="100" step="1" class="input" :class="{ 'input-error': errors.status }" />
+          </label>
+        </div>
+        <p v-if="errors.status" class="input-error-text">{{ t('channelMonitorCustom.statusInvalid') }}</p>
+      </section>
     </div>
   </div>
 </template>

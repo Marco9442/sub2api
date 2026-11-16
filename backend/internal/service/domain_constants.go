@@ -508,6 +508,8 @@ const (
 	SettingKeyChannelMonitorCustomTPSMin            = "channel_monitor_custom_tps_min"
 	SettingKeyChannelMonitorCustomTPSMax            = "channel_monitor_custom_tps_max"
 	SettingKeyChannelMonitorCustomWindows           = "channel_monitor_custom_windows"
+	SettingKeyChannelMonitorCustomStatusYellow      = "channel_monitor_custom_status_yellow_percent"
+	SettingKeyChannelMonitorCustomStatusRed         = "channel_monitor_custom_status_red_percent"
 
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].

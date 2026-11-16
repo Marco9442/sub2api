@@ -198,7 +198,12 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	for _, v := range views {
 		items = append(items, userMonitorViewToItem(v, includeQuota))
 	}
-	response.Success(c, gin.H{"items": items, "windows": h.monitorService.AvailabilityWindows(c.Request.Context())})
+	payload := gin.H{"items": items, "windows": h.monitorService.AvailabilityWindows(c.Request.Context())}
+	if yellow, red := h.monitorService.StatusPercents(c.Request.Context()); yellow > 0 && red > 0 {
+		payload["status_yellow_percent"] = yellow
+		payload["status_red_percent"] = red
+	}
+	response.Success(c, payload)
 }
 
 // GetStatus GET /api/v1/channel-monitors/:id/status

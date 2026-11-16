@@ -176,6 +176,8 @@ export interface ChannelMonitorCustomConfig {
   tps_min: number
   tps_max: number
   availability_windows?: { amount: number; unit: 'm' | 'd' }[]
+  status_yellow_percent: number
+  status_red_percent: number
 }
 
 export interface ChannelMonitorCustomOverride {

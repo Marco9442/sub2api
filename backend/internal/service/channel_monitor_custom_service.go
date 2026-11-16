@@ -447,6 +447,15 @@ func (s *ChannelMonitorService) fillWindowAvailability(ctx context.Context, view
 	}
 }
 
+// StatusPercents 返回 Custom 模式用户页右上角的黄、红百分比。其他模式返回 0。
+func (s *ChannelMonitorService) StatusPercents(ctx context.Context) (int, int) {
+	if s.probeRuntime(ctx).Mode != ChannelMonitorModeCustom {
+		return 0, 0
+	}
+	cfg, _ := s.loadCustomConfig(ctx)
+	return cfg.StatusYellowPercent, cfg.StatusRedPercent
+}
+
 // AvailabilityWindows 返回 Custom 模式的时间档；非 Custom 返回 nil。
 func (s *ChannelMonitorService) AvailabilityWindows(ctx context.Context) []AvailabilityWindow {
 	if s.probeRuntime(ctx).Mode != ChannelMonitorModeCustom {

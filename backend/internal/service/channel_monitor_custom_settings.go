@@ -19,6 +19,8 @@ func channelMonitorCustomKeys() []string {
 		SettingKeyChannelMonitorCustomTPSMin,
 		SettingKeyChannelMonitorCustomTPSMax,
 		SettingKeyChannelMonitorCustomWindows,
+		SettingKeyChannelMonitorCustomStatusYellow,
+		SettingKeyChannelMonitorCustomStatusRed,
 	}
 }
 
@@ -59,6 +61,8 @@ func (s *SettingService) SaveChannelMonitorMode(ctx context.Context, mode string
 		SettingKeyChannelMonitorCustomTPSMin:            strconv.FormatFloat(cfg.TPSMin, 'f', -1, 64),
 		SettingKeyChannelMonitorCustomTPSMax:            strconv.FormatFloat(cfg.TPSMax, 'f', -1, 64),
 		SettingKeyChannelMonitorCustomWindows:           formatAvailabilityWindows(cfg.AvailabilityWindows),
+		SettingKeyChannelMonitorCustomStatusYellow:      strconv.Itoa(cfg.StatusYellowPercent),
+		SettingKeyChannelMonitorCustomStatusRed:         strconv.Itoa(cfg.StatusRedPercent),
 	}
 	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
 		return err
@@ -105,6 +109,12 @@ func parseChannelMonitorCustom(vals map[string]string) ChannelMonitorCustomConfi
 	windows, err := parseAvailabilityWindows(vals[SettingKeyChannelMonitorCustomWindows])
 	if err == nil {
 		cfg.AvailabilityWindows = windows
+	}
+	if v, ok := atoiSetting(vals, SettingKeyChannelMonitorCustomStatusYellow); ok && v >= 1 && v <= 100 {
+		cfg.StatusYellowPercent = v
+	}
+	if v, ok := atoiSetting(vals, SettingKeyChannelMonitorCustomStatusRed); ok && v >= 1 && v <= 100 {
+		cfg.StatusRedPercent = v
 	}
 	return cfg
 }

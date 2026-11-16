@@ -30,6 +30,9 @@ type channelMonitorCustomConfigRequest struct {
 	TPSMax            float64 `json:"tps_max"`
 	// 空数组表示使用默认的 7/15/30 天。
 	AvailabilityWindows []availabilityWindowRequest `json:"availability_windows"`
+	// 省略时按 30。0 无法和缺字段区分，保存前补成默认值。
+	StatusYellowPercent int `json:"status_yellow_percent"`
+	StatusRedPercent    int `json:"status_red_percent"`
 }
 
 type availabilityWindowRequest struct {
@@ -88,7 +91,16 @@ func customConfigFromRequest(req channelMonitorCustomConfigRequest) service.Chan
 		TPSMin:              req.TPSMin,
 		TPSMax:              req.TPSMax,
 		AvailabilityWindows: availabilityWindowsFromRequest(req.AvailabilityWindows),
+		StatusYellowPercent: statusPercentOrDefault(req.StatusYellowPercent),
+		StatusRedPercent:    statusPercentOrDefault(req.StatusRedPercent),
 	}
+}
+
+func statusPercentOrDefault(v int) int {
+	if v == 0 {
+		return 30
+	}
+	return v
 }
 
 // GetMode GET /api/v1/admin/channel-monitors/mode

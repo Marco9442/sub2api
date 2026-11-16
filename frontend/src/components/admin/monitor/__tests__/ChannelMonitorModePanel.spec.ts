@@ -40,6 +40,8 @@ const savedView = {
     tps_enabled: false,
     tps_min: 0,
     tps_max: 0,
+    status_yellow_percent: 30,
+    status_red_percent: 30,
   },
 }
 
@@ -92,7 +94,7 @@ describe('ChannelMonitorModePanel', () => {
   it('groups custom settings and uses switches for optional metrics', async () => {
     const wrapper = await mountPanel()
 
-    for (const section of ['prompt', 'thresholds', 'ttft', 'tps']) {
+    for (const section of ['prompt', 'thresholds', 'ttft', 'tps', 'status']) {
       expect(wrapper.find(`[data-section="${section}"]`).exists()).toBe(true)
     }
     expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0)

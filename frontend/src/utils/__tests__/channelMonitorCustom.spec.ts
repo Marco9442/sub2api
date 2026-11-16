@@ -6,6 +6,13 @@ describe('customConfigErrors', () => {
     expect(customConfigErrors(defaultCustomConfig())).toEqual({})
   })
 
+  it('accepts equal status percents and rejects values outside 1-100', () => {
+    expect(customConfigErrors({ ...defaultCustomConfig(), status_yellow_percent: 30, status_red_percent: 30 }).status).toBeUndefined()
+    expect(customConfigErrors({ ...defaultCustomConfig(), status_yellow_percent: 0 }).status).toBe(true)
+    expect(customConfigErrors({ ...defaultCustomConfig(), status_red_percent: 101 }).status).toBe(true)
+    expect(customConfigErrors({ ...defaultCustomConfig(), status_yellow_percent: 30.5 }).status).toBe(true)
+  })
+
   it('rejects an empty prompt', () => {
     expect(customConfigErrors({ ...defaultCustomConfig(), prompt: '  ' })).toEqual({ prompt: true })
   })

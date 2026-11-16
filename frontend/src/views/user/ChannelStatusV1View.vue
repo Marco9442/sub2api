@@ -49,8 +49,9 @@ import MonitorHero, {
 } from '@/components/user/monitor/MonitorHero.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
-import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+import { DEFAULT_INTERVAL_SECONDS } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import { legacyOverallStatus, overallMonitorStatus } from '@/utils/channelMonitorStatus'
 
 const props = withDefaults(defineProps<{ metric?: 'latency' | 'ttft' }>(), { metric: 'latency' })
 const metric = computed(() => props.metric)
@@ -64,6 +65,8 @@ const loading = ref(false)
 const currentWindow = ref<MonitorWindow>('7d')
 // Custom 模式下由管理员配置的时间档；为空时沿用 7/15/30 天。
 const windows = ref<{ amount: number; unit: 'm' | 'd' }[]>([])
+const statusYellowPercent = ref(30)
+const statusRedPercent = ref(30)
 const customWindows = computed(() => metric.value === 'ttft')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
@@ -83,12 +86,9 @@ const countdown = autoRefresh.countdown
 
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
-  if (items.value.length === 0) return 'operational'
-  for (const it of items.value) {
-    if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
-    if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
-  }
-  return 'operational'
+  const statuses = items.value.map((it) => it.primary_status)
+  if (!customWindows.value) return legacyOverallStatus(statuses)
+  return overallMonitorStatus(statuses, statusYellowPercent.value, statusRedPercent.value)
 })
 
 const detailTitle = computed(() => {
@@ -109,6 +109,8 @@ async function reload(silent = false) {
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
     windows.value = res.windows ?? []
+    statusYellowPercent.value = storedPercent(res.status_yellow_percent)
+    statusRedPercent.value = storedPercent(res.status_red_percent)
     syncCustomWindow()
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
@@ -124,6 +126,10 @@ async function reload(silent = false) {
 }
 
 // 所选档不在配置里时（首次进入或管理员改了配置），切到第一档，与后端回退一致。
+function storedPercent(value: number | undefined): number {
+  return typeof value === 'number' && value > 0 ? value : 30
+}
+
 function syncCustomWindow() {
   if (!customWindows.value || windows.value.length === 0) return
   const keys = windows.value.map((w) => `${w.amount}${w.unit}`)

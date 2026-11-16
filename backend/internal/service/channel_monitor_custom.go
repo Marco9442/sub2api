@@ -18,13 +18,14 @@ const (
 	MonitorMetricKindTTFT    = "ttft"
 	MonitorMetricKindQuota   = "quota"
 
-	monitorCustomPromptDefault   = "ping"
-	monitorCustomPromptMaxRunes  = 500
-	monitorCustomYellowDefault   = 2
-	monitorCustomRedDefault      = 8
-	monitorLoopbackExceptionURL  = "http://127.0.0.1:8080"
-	monitorLoopbackExceptionHost = "127.0.0.1"
-	monitorLoopbackExceptionPort = "8080"
+	monitorCustomPromptDefault        = "ping"
+	monitorCustomPromptMaxRunes       = 500
+	monitorCustomYellowDefault        = 2
+	monitorCustomRedDefault           = 8
+	monitorCustomStatusPercentDefault = 30
+	monitorLoopbackExceptionURL       = "http://127.0.0.1:8080"
+	monitorLoopbackExceptionHost      = "127.0.0.1"
+	monitorLoopbackExceptionPort      = "8080"
 )
 
 // ChannelMonitorCustomConfig 是 Custom 模式的全局检测配置。
@@ -42,6 +43,10 @@ type ChannelMonitorCustomConfig struct {
 	TPSMax            float64 `json:"tps_max"`
 	// AvailabilityWindows 用户页可用率的时间档。空值表示默认的 7/15/30 天。
 	AvailabilityWindows []AvailabilityWindow `json:"availability_windows,omitempty"`
+	// StatusYellowPercent / StatusRedPercent 是用户页右上角总状态的百分比。
+	// 失败和出错算红色；降级、失败和出错都算黄色。两边都达到时红色优先。
+	StatusYellowPercent int `json:"status_yellow_percent"`
+	StatusRedPercent    int `json:"status_red_percent"`
 }
 
 // ChannelMonitorCustomOverride 是单条监控的覆盖。nil 字段继承全局配置。
@@ -70,10 +75,12 @@ type tpsPolicy struct {
 
 func defaultChannelMonitorCustomConfig() ChannelMonitorCustomConfig {
 	return ChannelMonitorCustomConfig{
-		Prompt:         monitorCustomPromptDefault,
-		YellowSeconds:  monitorCustomYellowDefault,
-		RedSeconds:     monitorCustomRedDefault,
-		TTFTMultiplier: 1,
+		Prompt:              monitorCustomPromptDefault,
+		YellowSeconds:       monitorCustomYellowDefault,
+		RedSeconds:          monitorCustomRedDefault,
+		TTFTMultiplier:      1,
+		StatusYellowPercent: monitorCustomStatusPercentDefault,
+		StatusRedPercent:    monitorCustomStatusPercentDefault,
 	}
 }
 
@@ -128,7 +135,17 @@ func validateCustomConfig(cfg ChannelMonitorCustomConfig) error {
 	if err := validateTTFTPolicy(resolveTTFTPolicy(cfg, nil)); err != nil {
 		return err
 	}
-	return validateTPSPolicy(resolveTPSPolicy(cfg, nil))
+	if err := validateTPSPolicy(resolveTPSPolicy(cfg, nil)); err != nil {
+		return err
+	}
+	return validateStatusPercents(cfg.StatusYellowPercent, cfg.StatusRedPercent)
+}
+
+func validateStatusPercents(yellow, red int) error {
+	if yellow < 1 || yellow > 100 || red < 1 || red > 100 {
+		return ErrChannelMonitorInvalidStatusPercent
+	}
+	return nil
 }
 
 // validateAvailabilityWindows 校验时间档。空值合法，表示使用默认档。
