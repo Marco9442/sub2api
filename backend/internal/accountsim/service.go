@@ -73,6 +73,7 @@ func (s *Service) run() {
 }
 
 // Tick 把状态补齐到当前时刻并落库。启用开关关闭时只加载不演进。
+// 演进发生在副本上，保存成功后才替换内存；失败时原水位保持不变，同一时段可以重试。
 func (s *Service) Tick(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,11 +84,16 @@ func (s *Service) Tick(ctx context.Context) error {
 		return nil
 	}
 	before := s.state.EvolvedUntil
-	Evolve(s.state, s.now(), s.config)
-	if s.state.EvolvedUntil.Equal(before) {
+	next := cloneState(s.state)
+	Evolve(next, s.now(), s.config)
+	if next.EvolvedUntil.Equal(before) {
 		return nil
 	}
-	return s.store.SaveState(ctx, s.state)
+	if err := s.store.SaveState(ctx, next); err != nil {
+		return err
+	}
+	s.state = next
+	return nil
 }
 
 func (s *Service) ensureLoaded(ctx context.Context) error {
