@@ -56,14 +56,29 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Cleanup function provider
 		provideCleanup,
-		// 账号管理 #2 不进 Wire：provideCleanup 参数表太长。
-		// wire_gen.go 在 adminHandlers 之后调用 startAccountSim，并把 Stop 接到 Cleanup 前面。
-		// 重新生成 wire 后要把这两处接回去。
-
-		// Application struct
-		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Cleanup"),
+		// 启动必须早于路由注册。ProvideHandlers 依赖 AccountSimStop，Wire 会先调用 startAccountSim。
+		startAccountSim,
+		provideApplication,
 	)
 	return nil, nil
+}
+
+func provideApplication(
+	server *http.Server,
+	promptAudit *securityaudit.PromptService,
+	pluginManager *service.PluginManager,
+	cleanup func(),
+	stop handler.AccountSimStop,
+) *Application {
+	return &Application{
+		Server:        server,
+		PromptAudit:   promptAudit,
+		PluginManager: pluginManager,
+		Cleanup: func() {
+			stop()
+			cleanup()
+		},
+	}
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {

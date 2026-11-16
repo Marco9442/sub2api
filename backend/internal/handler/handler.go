@@ -48,6 +48,10 @@ type AdminHandlers struct {
 	AccountSim *accountsim.Handler
 }
 
+// AccountSimStop 停止账号管理 #2 的后台演进。
+// 独立类型用来和清理函数的 func() 区分，Wire 才能同时注入两者。
+type AccountSimStop func()
+
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	Auth             *AuthHandler

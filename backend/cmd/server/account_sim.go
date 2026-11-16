@@ -9,8 +9,8 @@ import (
 )
 
 // startAccountSim 启动账号管理 #2 的后台演进，并把接口挂到管理路由上。
-// 返回的函数停止演进。调用点在 wire_gen.go，不经过 Wire。
-func startAccountSim(db *sql.DB, admin *handler.AdminHandlers) func() {
+// Wire 会在 ProvideHandlers 之前调用它，因此注册路由时 AccountSim 已经挂上。
+func startAccountSim(db *sql.DB, admin *handler.AdminHandlers) handler.AccountSimStop {
 	svc := accountsim.NewService(accountsim.NewStore(db), time.Now)
 	svc.Start()
 	if admin != nil {
