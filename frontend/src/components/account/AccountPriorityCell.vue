@@ -77,6 +77,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { update as updateAccount } from '@/api/admin/accounts'
+import { isAccountSimPage, withAccountSimRequest } from '@/api/accountSim'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Account } from '@/types'
 
@@ -92,6 +93,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const requestSim = isAccountSimPage()
 
 const draft = ref(props.account.priority)
 const saving = ref(false)
@@ -124,7 +126,9 @@ const save = async () => {
   if (target === props.account.priority) return
   saving.value = true
   try {
-    const updated = await updateAccount(props.account.id, { priority: target })
+    const updated = await withAccountSimRequest(requestSim, () =>
+      updateAccount(props.account.id, { priority: target })
+    )
     emit('updated', updated)
   } catch (error) {
     draft.value = props.account.priority
@@ -176,7 +180,7 @@ const cancelInput = () => {
 }
 
 onBeforeUnmount(() => {
-  // 卸载前把还没发出的改动落库，避免翻页/刷新时丢失
-  if (saveTimer) void save()
+  // 路由此时已经切走，补发保存会写到真实账号。还没发出的改动放弃。
+  clearTimer()
 })
 </script>

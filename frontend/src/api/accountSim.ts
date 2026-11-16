@@ -39,25 +39,42 @@ const ACCOUNT_SIM_DIRECT_PATHS = new Set(['/admin/accounts/antigravity/default-m
 // 只切这一条仪表盘接口。账号统计的模型明细会读它，其余仪表盘仍走真实接口。
 const ACCOUNT_SIM_EXACT_PATHS = new Set(['/admin/dashboard/user-breakdown'])
 
-// 按下导入时记住走模拟接口。只覆盖这一次操作，离开页面要取消还没发出的请求。
-let pinnedActions = 0
+// 只在一次同步调度期间存在。异步间隙里不持有，避免把其他页面的请求也改走模拟接口。
+let forced: boolean | undefined
 
-export function pinAccountSimAction(): () => void {
-  if (!isAccountSimPage()) return () => {}
-  pinnedActions += 1
-  let released = false
-  return () => {
-    if (released) return
-    released = true
-    pinnedActions -= 1
+/** 固定这一次调用的请求来源。只覆盖 fn 同步执行的部分，请求必须在这次调用内发出。 */
+export function withAccountSimRequest<T>(sim: boolean, fn: () => T): T {
+  const previous = forced
+  forced = sim
+  try {
+    return fn()
+  } finally {
+    forced = previous
   }
 }
 
-function accountSimActive(pathname: string): boolean {
-  return isAccountSimPage(pathname) || pinnedActions > 0
+/**
+ * 把对象上的函数调用固定到来源。非函数原样返回。
+ * 组件卸载后尚未发出的调用不再打接口。
+ */
+export function bindAccountSimCalls<T extends object>(target: T, sim: boolean, alive: () => boolean): T {
+  return new Proxy(target, {
+    get(obj, prop, receiver) {
+      const value = Reflect.get(obj, prop, receiver)
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        if (!alive()) return new Promise(() => {})
+        return withAccountSimRequest(sim, () => Reflect.apply(value, obj, args))
+      }
+    },
+  })
 }
 
-/** 在账号管理 #2 页面内，或已记住的操作里，把账号接口改写到模拟接口。 */
+function accountSimActive(pathname: string): boolean {
+  return forced !== undefined ? forced : isAccountSimPage(pathname)
+}
+
+/** 在账号管理 #2 页面内，或这次调用已固定的来源里，把账号接口改写到模拟接口。 */
 export function toAccountSimPath(path: string, pathname: string = currentPathname()): string {
   if (!accountSimActive(pathname)) return path
   const [route] = path.split(/[?#]/, 1)

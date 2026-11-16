@@ -79,6 +79,15 @@ describe('AccountPriorityCell', () => {
     expect(wrapper.get('[data-testid="account-priority-value"]').text()).toBe('3')
   })
 
+  it('drops a pending save when the cell unmounts', async () => {
+    const wrapper = mountCell()
+    await wrapper.get('[data-testid="account-priority-increment"]').trigger('click')
+    wrapper.unmount()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    expect(update).not.toHaveBeenCalled()
+  })
+
   it('reverts and emits an error when the update fails', async () => {
     vi.mocked(update).mockRejectedValueOnce(new Error('boom'))
     const wrapper = mountCell()

@@ -78,7 +78,8 @@ apiClient.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error)
-  }
+  },
+  { synchronous: true }
 )
 
 // ==================== Response Interceptor ====================

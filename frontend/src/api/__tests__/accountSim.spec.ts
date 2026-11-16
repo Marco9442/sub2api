@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { isAccountSimPage, pinAccountSimAction, toAccountSimPath } from '@/api/accountSim'
+import { bindAccountSimCalls, isAccountSimPage, toAccountSimPath, withAccountSimRequest } from '@/api/accountSim'
 
 vi.mock('@/i18n', () => ({
   getLocale: () => 'zh-CN',
@@ -44,19 +44,39 @@ describe('账号管理 #2 请求切换', () => {
     )
   })
 
-  it('按下导入后即使离开页面，这次请求仍走模拟接口，松开后不再切换', () => {
-    window.history.replaceState({}, '', '/admin/accounts-2')
-    const release = pinAccountSimAction()
-    try {
-      window.history.replaceState({}, '', '/admin/accounts')
+  it('单次标记只覆盖这次同步调用，离开后其他请求不切换', () => {
+    window.history.replaceState({}, '', '/admin/accounts')
+    withAccountSimRequest(true, () => {
       expect(toAccountSimPath('/admin/accounts/data')).toBe('/admin/account-sim/accounts/data')
       expect(toAccountSimPath('/admin/accounts/antigravity/default-model-mapping')).toBe(
         '/admin/accounts/antigravity/default-model-mapping'
       )
-    } finally {
-      release()
-    }
+    })
     expect(toAccountSimPath('/admin/accounts/data')).toBe('/admin/accounts/data')
+    window.history.replaceState({}, '', '/admin/accounts-2')
+    withAccountSimRequest(false, () => {
+      expect(toAccountSimPath('/admin/accounts/data')).toBe('/admin/accounts/data')
+    })
+  })
+
+  it('绑定调用在存活时固定来源，卸载后不再打出', async () => {
+    window.history.replaceState({}, '', '/admin/accounts')
+    const calls: string[] = []
+    const api = {
+      id: 1,
+      save: () => {
+        calls.push(toAccountSimPath('/admin/accounts/1'))
+        return Promise.resolve('ok')
+      },
+    }
+    let alive = true
+    const bound = bindAccountSimCalls(api, true, () => alive)
+    expect(bound.id).toBe(1)
+    await bound.save()
+    alive = false
+    const pending = bound.save()
+    await expect(Promise.race([pending, Promise.resolve('hung')])).resolves.toBe('hung')
+    expect(calls).toEqual(['/admin/account-sim/accounts/1'])
   })
 })
 
@@ -106,12 +126,10 @@ describe('统一请求入口接入切换', () => {
     expect(adapter.mock.calls[0][0].url).toBe('/admin/accounts')
   })
 
-  it('已记住的导入在离开页面后仍请求模拟接口，静态映射始终直连', async () => {
-    window.history.replaceState({}, '', '/admin/accounts-2')
-    const { apiClient } = await import('@/api/client')
-    const { pinAccountSimAction: pin } = await import('@/api/accountSim')
-    const release = pin()
+  it('单次标记的请求在离开页面后仍走模拟接口，其他请求不切换', async () => {
     window.history.replaceState({}, '', '/admin/accounts')
+    const { apiClient } = await import('@/api/client')
+    const { withAccountSimRequest: mark } = await import('@/api/accountSim')
     const adapter = vi.fn().mockResolvedValue({
       status: 200,
       data: { code: 0, data: {} },
@@ -121,14 +139,12 @@ describe('统一请求入口接入切换', () => {
     })
     apiClient.defaults.adapter = adapter
 
+    await mark(true, () => apiClient.post('/admin/accounts/data'))
     await apiClient.post('/admin/accounts/data')
-    await apiClient.get('/admin/accounts/antigravity/default-model-mapping')
+    await mark(true, () => apiClient.get('/admin/accounts/antigravity/default-model-mapping'))
     expect(adapter.mock.calls[0][0].url).toBe('/admin/account-sim/accounts/data')
-    expect(adapter.mock.calls[1][0].url).toBe('/admin/accounts/antigravity/default-model-mapping')
-
-    release()
-    await apiClient.post('/admin/accounts/data')
-    expect(adapter.mock.calls[2][0].url).toBe('/admin/accounts/data')
+    expect(adapter.mock.calls[1][0].url).toBe('/admin/accounts/data')
+    expect(adapter.mock.calls[2][0].url).toBe('/admin/accounts/antigravity/default-model-mapping')
   })
 
   it('buildApiUrl（测试连接的流式请求）同样切换', async () => {
