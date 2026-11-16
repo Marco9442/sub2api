@@ -108,8 +108,9 @@ describe('MonitorCard quota snapshot visibility', () => {
       }),
     )
     expect(wrapper.text()).not.toContain('Authentication failed')
-    expect(wrapper.text()).toContain('monitorCommon.quota.unavailable')
-    expect(wrapper.get('[data-testid="monitor-quota-error"]').attributes('title') ?? '').toBe('')
+    expect(wrapper.text()).not.toContain('monitorCommon.quota.unavailable')
+    expect(wrapper.find('[data-testid="monitor-quota-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
   })
 
   it('keeps the real model name for probe monitors', () => {

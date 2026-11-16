@@ -1,5 +1,5 @@
 <template>
-  <div v-if="snapshot" class="space-y-1" data-testid="monitor-quota-view">
+  <div v-if="snapshot && hasVisibleContent" class="space-y-1" data-testid="monitor-quota-view">
     <!-- 套餐等级徽章（如智谱 plan level / Claude 订阅档） -->
     <div v-if="snapshot.plan_level" class="flex flex-wrap items-center gap-1.5">
       <span class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-600 dark:text-gray-300">
@@ -33,7 +33,7 @@
       </span>
     </div>
 
-    <div v-if="!snapshot.success" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="errorTitle" data-testid="monitor-quota-error">
+    <div v-if="showError" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="errorTitle" data-testid="monitor-quota-error">
       {{ truncatedError }}
     </div>
   </div>
@@ -54,7 +54,7 @@ import UsageProgressBar from '@/components/account/UsageProgressBar.vue'
  */
 const props = defineProps<{
   snapshot?: MonitorQuotaSnapshot | null
-  // 用户页不展示上游错误原文。管理端不传，仍显示原文。
+  // 用户页不展示失败说明。管理端不传，仍显示原文。
   concealError?: boolean
 }>()
 
@@ -126,10 +126,19 @@ const balanceRows = computed(() => {
   return []
 })
 
-const errorTitle = computed(() => (props.concealError ? undefined : props.snapshot?.error))
+const showError = computed(() => !!props.snapshot && !props.snapshot.success && !props.concealError)
+
+const hasVisibleContent = computed(() => {
+  const snapshot = props.snapshot
+  if (!snapshot) return false
+  if (snapshot.plan_level) return true
+  if (snapshot.success && (tierRows.value.length > 0 || balanceRows.value.length > 0)) return true
+  return showError.value
+})
+
+const errorTitle = computed(() => props.snapshot?.error)
 
 const truncatedError = computed(() => {
-  if (props.concealError) return t('monitorCommon.quota.unavailable')
   const error = props.snapshot?.error || t('monitorCommon.quota.unavailable')
   return error.length > 48 ? `${error.slice(0, 48)}…` : error
 })
