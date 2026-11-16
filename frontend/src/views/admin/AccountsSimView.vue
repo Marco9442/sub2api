@@ -36,7 +36,7 @@
       <p v-else-if="saved" class="mt-3 text-sm text-emerald-600">{{ t('common.saved') }}</p>
       <div class="mt-5 flex justify-end gap-2">
         <button type="button" class="btn btn-secondary" @click="open = false">{{ t('common.cancel') }}</button>
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ t('common.save') }}</button>
+        <button type="submit" class="btn btn-primary" :disabled="saving || !loaded">{{ t('common.save') }}</button>
       </div>
     </form>
   </div>
@@ -69,6 +69,7 @@ provide(openAccountSimConfigKey, () => {
 provide(hideGeminiSimulatedNoteKey, true)
 const saving = ref(false)
 const saved = ref(false)
+const loaded = ref(false)
 const error = ref('')
 const form = reactive<SimConfig>({
   enabled: true,
@@ -84,9 +85,11 @@ const form = reactive<SimConfig>({
 const load = async () => {
   const { data } = await apiClient.get<SimConfig>('/admin/account-sim/config')
   Object.assign(form, data)
+  loaded.value = true
 }
 
 const save = async () => {
+  if (!loaded.value || saving.value) return
   saving.value = true
   saved.value = false
   error.value = ''

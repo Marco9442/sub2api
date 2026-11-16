@@ -33,10 +33,32 @@ export function isAccountSimPage(pathname: string = currentPathname()): boolean 
   return pathname === ACCOUNT_SIM_PAGE_PATH || pathname.startsWith(`${ACCOUNT_SIM_PAGE_PATH}/`)
 }
 
-/** 在账号管理 #2 页面内，把以 /admin/... 开头的接口路径改写到模拟接口；其他情况原样返回。 */
+// 静态表，不读号池。改写后会得到空对象，并被前端缓存成“没有映射”。
+const ACCOUNT_SIM_DIRECT_PATHS = new Set(['/admin/accounts/antigravity/default-model-mapping'])
+
+// 按下导入时记住走模拟接口。只覆盖这一次操作，离开页面要取消还没发出的请求。
+let pinnedActions = 0
+
+export function pinAccountSimAction(): () => void {
+  if (!isAccountSimPage()) return () => {}
+  pinnedActions += 1
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    pinnedActions -= 1
+  }
+}
+
+function accountSimActive(pathname: string): boolean {
+  return isAccountSimPage(pathname) || pinnedActions > 0
+}
+
+/** 在账号管理 #2 页面内，或已记住的操作里，把账号接口改写到模拟接口。 */
 export function toAccountSimPath(path: string, pathname: string = currentPathname()): string {
-  if (!isAccountSimPage(pathname)) return path
+  if (!accountSimActive(pathname)) return path
   const [route] = path.split(/[?#]/, 1)
+  if (ACCOUNT_SIM_DIRECT_PATHS.has(route)) return path
   const switched = ACCOUNT_SIM_SWITCHED_PREFIXES.some(
     (prefix) => route === prefix || route.startsWith(`${prefix}/`)
   )

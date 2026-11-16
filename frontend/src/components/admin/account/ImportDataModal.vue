@@ -96,10 +96,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
+import { isAccountSimPage, pinAccountSimAction } from '@/api/accountSim'
 import { useAppStore } from '@/stores/app'
 import type { AdminDataImportResult, AdminDataPayload } from '@/types'
 
@@ -119,6 +120,10 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const importing = ref(false)
+let abandonImport = false
+onUnmounted(() => {
+  abandonImport = true
+})
 const files = ref<File[]>([])
 const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
@@ -272,6 +277,9 @@ const handleImport = async () => {
     return
   }
 
+  // 按下时记住走模拟接口。读文件期间离开页面则取消，避免随后打到真实导入。
+  const startedOnSim = isAccountSimPage()
+  const releasePin = pinAccountSimAction()
   importing.value = true
   try {
     const dataPayloads: AdminDataPayload[] = []
@@ -292,6 +300,7 @@ const handleImport = async () => {
       dataPayloads.push(parsed)
     }
     const dataPayload = mergeDataPayloads(dataPayloads)
+    if (abandonImport || (startedOnSim && !isAccountSimPage())) return
 
     const res = await adminAPI.accounts.importData({
       data: dataPayload,
@@ -320,6 +329,7 @@ const handleImport = async () => {
   } catch (error: any) {
     appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
   } finally {
+    releasePin()
     importing.value = false
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { isAccountSimPage, toAccountSimPath } from '@/api/accountSim'
+import { isAccountSimPage, pinAccountSimAction, toAccountSimPath } from '@/api/accountSim'
 
 vi.mock('@/i18n', () => ({
   getLocale: () => 'zh-CN',
@@ -32,6 +32,27 @@ describe('账号管理 #2 请求切换', () => {
     expect(toAccountSimPath('/admin/accountsx', page)).toBe('/admin/accountsx')
     expect(toAccountSimPath('/auth/me', page)).toBe('/auth/me')
     expect(toAccountSimPath('/admin/account-sim/config', page)).toBe('/admin/account-sim/config')
+    expect(toAccountSimPath('/admin/accounts/antigravity/default-model-mapping', page)).toBe(
+      '/admin/accounts/antigravity/default-model-mapping'
+    )
+    expect(toAccountSimPath('/admin/accounts/antigravity/default-model-mapping?x=1', page)).toBe(
+      '/admin/accounts/antigravity/default-model-mapping?x=1'
+    )
+  })
+
+  it('按下导入后即使离开页面，这次请求仍走模拟接口，松开后不再切换', () => {
+    window.history.replaceState({}, '', '/admin/accounts-2')
+    const release = pinAccountSimAction()
+    try {
+      window.history.replaceState({}, '', '/admin/accounts')
+      expect(toAccountSimPath('/admin/accounts/data')).toBe('/admin/account-sim/accounts/data')
+      expect(toAccountSimPath('/admin/accounts/antigravity/default-model-mapping')).toBe(
+        '/admin/accounts/antigravity/default-model-mapping'
+      )
+    } finally {
+      release()
+    }
+    expect(toAccountSimPath('/admin/accounts/data')).toBe('/admin/accounts/data')
   })
 })
 
@@ -79,6 +100,31 @@ describe('统一请求入口接入切换', () => {
     await apiClient.get('/admin/accounts')
 
     expect(adapter.mock.calls[0][0].url).toBe('/admin/accounts')
+  })
+
+  it('已记住的导入在离开页面后仍请求模拟接口，静态映射始终直连', async () => {
+    window.history.replaceState({}, '', '/admin/accounts-2')
+    const { apiClient } = await import('@/api/client')
+    const { pinAccountSimAction: pin } = await import('@/api/accountSim')
+    const release = pin()
+    window.history.replaceState({}, '', '/admin/accounts')
+    const adapter = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { code: 0, data: {} },
+      headers: {},
+      config: {},
+      statusText: 'OK',
+    })
+    apiClient.defaults.adapter = adapter
+
+    await apiClient.post('/admin/accounts/data')
+    await apiClient.get('/admin/accounts/antigravity/default-model-mapping')
+    expect(adapter.mock.calls[0][0].url).toBe('/admin/account-sim/accounts/data')
+    expect(adapter.mock.calls[1][0].url).toBe('/admin/accounts/antigravity/default-model-mapping')
+
+    release()
+    await apiClient.post('/admin/accounts/data')
+    expect(adapter.mock.calls[2][0].url).toBe('/admin/accounts/data')
   })
 
   it('buildApiUrl（测试连接的流式请求）同样切换', async () => {
