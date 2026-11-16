@@ -25,7 +25,7 @@ func (h *Handler) registerWriteRoutes() {
 	h.handle(http.MethodPost, "accounts/:id/reset-quota", h.mutate(resetQuota))
 	h.handle(http.MethodPost, "accounts/:id/refresh", h.mutate(refreshCredentials))
 	h.handle(http.MethodPost, "accounts/:id/refresh-tier", h.mutate(touch))
-	h.handle(http.MethodPost, "accounts/:id/set-privacy", h.mutate(touch))
+	h.handle(http.MethodPost, "accounts/:id/set-privacy", h.mutate(setPrivacy))
 	h.handle(http.MethodPost, "accounts/:id/apply-oauth-credentials", h.mutate(refreshCredentials))
 	h.handle(http.MethodPost, "accounts/:id/revert-proxy-fallback", h.mutate(touch))
 	h.handle(http.MethodGet, "accounts/:id/temp-unschedulable", h.tempUnschedulable)
@@ -81,6 +81,24 @@ func (h *Handler) mutate(op func(a *Account, now time.Time)) func(c *gin.Context
 }
 
 func touch(a *Account, now time.Time) { a.UpdatedAt = now }
+
+// setPrivacy 记下平台对应的隐私成功状态。页面只认这两个值，只改时间会被当成失败。
+func setPrivacy(a *Account, now time.Time) {
+	touch(a, now)
+	var mode string
+	switch a.Platform {
+	case "openai":
+		mode = service.PrivacyModeTrainingOff
+	case "antigravity":
+		mode = service.AntigravityPrivacySet
+	default:
+		return
+	}
+	if a.Extra == nil {
+		a.Extra = map[string]any{}
+	}
+	a.Extra["privacy_mode"] = mode
+}
 
 // clearError 与真实操作一致：恢复为 active 并清空错误信息。手动恢复后不再自动淘汰。
 func clearError(a *Account, now time.Time) {

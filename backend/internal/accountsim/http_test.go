@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -903,4 +904,39 @@ func TestCloneAccountCopiesActualCost(t *testing.T) {
 	if src.Window5h.ActualCost == nil || *src.Window5h.ActualCost != 0 || *src.Window7d.ActualCost != 1 || *src.Days[0].ActualCost != 0 {
 		t.Fatal("改副本不应改原账号的实际费用")
 	}
+}
+
+func TestSetPrivacyStoresPlatformStatus(t *testing.T) {
+	router, store := newTestServer(t)
+	if mode := privacyMode(t, router, http.MethodPost, "/accounts/6602/set-privacy"); mode != service.PrivacyModeTrainingOff {
+		t.Fatalf("openai 隐私应为 training_off: %v", mode)
+	}
+	if store.state.Accounts[6602].Extra["privacy_mode"] != service.PrivacyModeTrainingOff || store.saves != 1 {
+		t.Fatal("openai 隐私状态应落库")
+	}
+	if got := privacyMode(t, router, http.MethodGet, "/accounts/6602"); got != service.PrivacyModeTrainingOff {
+		t.Fatalf("再次读取应带回隐私状态: %v", got)
+	}
+
+	store.state.Accounts[6601].Platform = "antigravity"
+	if mode := privacyMode(t, router, http.MethodPost, "/accounts/6601/set-privacy"); mode != service.AntigravityPrivacySet {
+		t.Fatalf("antigravity 隐私应为 privacy_set: %v", mode)
+	}
+	if store.state.Accounts[6601].Extra["privacy_mode"] != service.AntigravityPrivacySet {
+		t.Fatal("antigravity 隐私状态应落库")
+	}
+
+	if mode := privacyMode(t, router, http.MethodPost, "/accounts/6604/set-privacy"); mode != nil {
+		t.Fatalf("其他平台不应写入隐私成功状态: %v", mode)
+	}
+}
+
+func privacyMode(t *testing.T, router *gin.Engine, method, path string) any {
+	t.Helper()
+	status, resp := call(t, router, method, path, "")
+	body := decode[map[string]any](t, resp.Data)
+	if status != http.StatusOK {
+		t.Fatalf("隐私请求失败: %s %d %+v", path, status, resp)
+	}
+	return asMap(t, body["extra"])["privacy_mode"]
 }
