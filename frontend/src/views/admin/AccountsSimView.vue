@@ -1,8 +1,5 @@
 <template>
   <AccountsView />
-  <button type="button" class="btn btn-secondary fixed bottom-6 right-6 z-40" @click="open = true">
-    {{ t('accountSim.open') }}
-  </button>
   <div v-if="open" class="fixed inset-0 z-50 flex items-end justify-end bg-black/20 p-6" @click.self="open = false">
     <form class="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg dark:bg-dark-800" @submit.prevent="save">
       <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('accountSim.title') }}</h2>
@@ -46,9 +43,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, provide, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
+import { hideGeminiSimulatedNoteKey, openAccountSimConfigKey } from '@/composables/accountSimPage'
 import AccountsView from './AccountsView.vue'
 
 interface SimConfig {
@@ -65,6 +63,10 @@ interface SimConfig {
 
 const { t } = useI18n()
 const open = ref(false)
+provide(openAccountSimConfigKey, () => {
+  open.value = true
+})
+provide(hideGeminiSimulatedNoteKey, true)
 const saving = ref(false)
 const saved = ref(false)
 const error = ref('')

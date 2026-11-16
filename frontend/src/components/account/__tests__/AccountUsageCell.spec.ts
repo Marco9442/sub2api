@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
+import { hideGeminiSimulatedNoteKey } from '@/composables/accountSimPage'
 import type { Account } from '@/types'
 
 const { getUsage } = vi.hoisted(() => ({
@@ -1990,6 +1991,46 @@ describe('AccountUsageCell', () => {
     expect(text).toContain('admin.accounts.gemini.quotaPolicy.title')
     expect(text).toContain('admin.accounts.gemini.quotaPolicy.simulatedNote')
     expect(getUsage).toHaveBeenCalledWith(4003)
+  })
+
+  it('账号管理 #2 不显示本地模拟配额说明', async () => {
+    getUsage.mockResolvedValue({
+      gemini_pro_daily: {
+        utilization: 20,
+        resets_at: '2026-10-11T07:00:00Z',
+        remaining_seconds: 3600
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4003,
+          platform: 'gemini',
+          type: 'apikey',
+          credentials: {
+            base_url: 'https://generativelanguage.googleapis.com',
+            api_key: 'AIza-official',
+            tier_id: 'aistudio_paid'
+          },
+          extra: {}
+        })
+      },
+      global: {
+        provide: {
+          [hideGeminiSimulatedNoteKey as symbol]: true
+        },
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('admin.accounts.gemini.quotaPolicy.simulatedNote')
+    expect(wrapper.text()).not.toContain('Simulated quota')
   })
 
   it('Anthropic OAuth 会渲染 7d F (Fable) 进度条，且 7d S 逻辑保留', async () => {
