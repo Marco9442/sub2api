@@ -252,6 +252,71 @@ func (r *historyCaptureRepo) InsertHistoryBatch(_ context.Context, rows []*Chann
 
 func (r *historyCaptureRepo) MarkChecked(context.Context, int64, time.Time) error { return nil }
 
+func TestRunCustomCheck_SplitKeyAtErrorCutoffIsNotStored(t *testing.T) {
+	orig := customMonitorHTTPClient
+	customMonitorHTTPClient = &http.Client{}
+	t.Cleanup(func() { customMonitorHTTPClient = orig })
+
+	secret := "gateway-token-abcdef123456"
+	body := strings.Repeat("x", monitorErrorBodySnippetMaxBytes-len(secret)/2) + secret + "TAIL"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+
+	res := runCustomCheckForModel(t.Context(), customProbeInput{
+		MonitorID: 9,
+		Provider:  MonitorProviderOpenAI,
+		Endpoint:  server.URL,
+		APIKey:    secret,
+		Model:     "m",
+		Config:    defaultChannelMonitorCustomConfig(),
+	})
+	require.NotContains(t, res.Message, secret)
+	require.NotContains(t, res.Message, secret[:8])
+	require.NotContains(t, res.Message, "TAIL")
+
+	repo := &historyCaptureRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+	svc.persistCheckResults(t.Context(), ChannelMonitorModeCustom, &ChannelMonitor{ID: 9, CheckMode: MonitorCheckModeProbe}, []*CheckResult{res})
+	require.Len(t, repo.rows, 1)
+	require.NotContains(t, repo.rows[0].Message, secret)
+	require.NotContains(t, repo.rows[0].Message, secret[:8])
+}
+
+func TestRedactProbeErrorBody_DropsCutKey(t *testing.T) {
+	secret := "gateway-token-abcdef123456"
+	got := redactProbeErrorBody(secret, []byte(strings.Repeat("x", 20)+secret[:10]), true)
+	require.Equal(t, "upstream request failed", got)
+	require.NotContains(t, got, secret[:8])
+}
+
+func TestRunCustomCheck_LongErrorRedactsWholeKey(t *testing.T) {
+	orig := customMonitorHTTPClient
+	customMonitorHTTPClient = &http.Client{}
+	t.Cleanup(func() { customMonitorHTTPClient = orig })
+
+	secret := "gateway-token-abcdef123456"
+	body := `{"error":"bad ` + secret + `"}` + strings.Repeat("y", monitorErrorBodySnippetMaxBytes)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+
+	res := runCustomCheckForModel(t.Context(), customProbeInput{
+		MonitorID: 9,
+		Provider:  MonitorProviderOpenAI,
+		Endpoint:  server.URL,
+		APIKey:    secret,
+		Model:     "m",
+		Config:    defaultChannelMonitorCustomConfig(),
+	})
+	require.NotContains(t, res.Message, secret)
+	require.Contains(t, res.Message, "REDACTED")
+}
+
 func TestCustomProbeMessage_LeavesShortTokenUntouched(t *testing.T) {
 	got := customProbeMessage("error", "upstream stream error")
 	require.Equal(t, "upstream stream error", got)

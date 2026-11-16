@@ -110,9 +110,9 @@ func runCustomCheckForModel(ctx context.Context, in customProbeInput) *CheckResu
 	var statusCode int
 	var cause string
 	if streaming {
-		measured, text, completed, statusCode, cause = readCustomStream(ctx, full, body, headers, streamProtocolFor(in.Provider, apiMode), start)
+		measured, text, completed, statusCode, cause = readCustomStream(ctx, full, body, headers, in.APIKey, streamProtocolFor(in.Provider, apiMode), start)
 	} else {
-		measured, text, completed, statusCode, cause = readCustomFull(ctx, full, body, headers, in.Provider, apiMode, start)
+		measured, text, completed, statusCode, cause = readCustomFull(ctx, full, body, headers, in.APIKey, in.Provider, apiMode, start)
 	}
 	elapsedMs := int(time.Since(start) / time.Millisecond)
 	processed, procErr := applyProcessedTTFT(int(measured/time.Millisecond), ttft)
@@ -187,6 +187,44 @@ func untrustedProbeCause(cause string) bool {
 	default:
 		return true
 	}
+}
+
+// readBoundedProbeBody 读取错误响应，并标出是否打到上限。
+func readBoundedProbeBody(r io.Reader, limit int) ([]byte, bool) {
+	buf, _ := io.ReadAll(io.LimitReader(r, int64(limit+1)))
+	if len(buf) > limit {
+		return buf[:limit], true
+	}
+	return buf, false
+}
+
+// redactProbeErrorBody 先脱敏再截断。密钥被上限切断时，片段无法整段替换，只留固定说明。
+func redactProbeErrorBody(apiKey string, body []byte, hitLimit bool) string {
+	text := strings.TrimSpace(string(body))
+	text = sanitizeErrorMessage(text)
+	key := strings.TrimSpace(apiKey)
+	if len(key) >= 8 {
+		if strings.Contains(text, key) {
+			text = strings.ReplaceAll(text, key, "***REDACTED***")
+		} else if hitLimit && keyPrefixAtEnd(text, key) {
+			return "upstream request failed"
+		}
+	}
+	return truncateForErrorBody(text)
+}
+
+// keyPrefixAtEnd 判断截断文本是否以密钥前缀结尾。
+func keyPrefixAtEnd(text, key string) bool {
+	max := len(key) - 1
+	if max > len(text) {
+		max = len(text)
+	}
+	for n := max; n >= 8; n-- {
+		if strings.HasSuffix(text, key[:n]) {
+			return true
+		}
+	}
+	return false
 }
 
 // customProbeMessage 先走监控模块已有的密钥模式，再替换本条配置的完整 API key。
@@ -328,7 +366,7 @@ var geminiStreamProtocol = monitorStreamProtocol{
 	fail: func(_, data string) bool { return gjson.Get(data, "error").Exists() },
 }
 
-func readCustomStream(ctx context.Context, fullURL string, body []byte, headers map[string]string, protocol monitorStreamProtocol, start time.Time) (time.Duration, string, bool, int, string) {
+func readCustomStream(ctx context.Context, fullURL string, body []byte, headers map[string]string, apiKey string, protocol monitorStreamProtocol, start time.Time) (time.Duration, string, bool, int, string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, "", false, 0, err.Error()
@@ -344,8 +382,8 @@ func readCustomStream(ctx context.Context, fullURL string, body []byte, headers 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, monitorErrorBodySnippetMaxBytes))
-		return 0, "", false, resp.StatusCode, strings.TrimSpace(string(snippet))
+		raw, hitLimit := readBoundedProbeBody(resp.Body, monitorResponseMaxBytes)
+		return 0, "", false, resp.StatusCode, redactProbeErrorBody(apiKey, raw, hitLimit)
 	}
 	measured, text, completed, failed, cause := consumeMonitorSSE(resp.Body, protocol, start)
 	if failed {
@@ -357,14 +395,14 @@ func readCustomStream(ctx context.Context, fullURL string, body []byte, headers 
 	return measured, text, completed, resp.StatusCode, cause
 }
 
-func readCustomFull(ctx context.Context, fullURL string, body []byte, headers map[string]string, provider, apiMode string, start time.Time) (time.Duration, string, bool, int, string) {
+func readCustomFull(ctx context.Context, fullURL string, body []byte, headers map[string]string, apiKey, provider, apiMode string, start time.Time) (time.Duration, string, bool, int, string) {
 	raw, status, err := postJSON(ctx, customMonitorHTTPClient, fullURL, body, headers, "application/json")
 	elapsed := time.Since(start)
 	if err != nil {
 		return elapsed, "", false, status, err.Error()
 	}
 	if status < 200 || status >= 300 {
-		return elapsed, "", false, status, truncateForErrorBody(string(raw))
+		return elapsed, "", false, status, redactProbeErrorBody(apiKey, raw, len(raw) >= monitorResponseMaxBytes)
 	}
 	text := extractProviderProbeText(provider, apiMode, raw)
 	if strings.TrimSpace(text) == "" {
