@@ -146,13 +146,14 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 	return item
 }
 
-// userQuotaSnapshot 复制快照并去掉错误原文。用户页不展示这段说明。
+// userQuotaSnapshot 复制快照并去掉错误原文和鉴权失败标记。用户页不展示这些说明。
 func userQuotaSnapshot(src *domain.MonitorQuotaSnapshot) *domain.MonitorQuotaSnapshot {
 	if src == nil {
 		return nil
 	}
 	copied := *src
 	copied.Error = ""
+	copied.CredentialInvalid = false
 	return &copied
 }
 

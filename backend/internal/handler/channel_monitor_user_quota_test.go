@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -12,9 +13,10 @@ import (
 
 func TestUserMonitorViewOmitsQuotaError(t *testing.T) {
 	source := &domain.MonitorQuotaSnapshot{
-		Source:  "cn_balance",
-		Success: false,
-		Error:   "Authentication failed (HTTP 401)",
+		Source:            "cn_balance",
+		Success:           false,
+		Error:             "Authentication failed (HTTP 401)",
+		CredentialInvalid: true,
 	}
 	view := &service.UserMonitorView{LatestQuota: source}
 
@@ -24,8 +26,15 @@ func TestUserMonitorViewOmitsQuotaError(t *testing.T) {
 	require.False(t, item.LatestQuota.Success)
 	require.Equal(t, "cn_balance", item.LatestQuota.Source)
 	require.Empty(t, item.LatestQuota.Error)
+	require.False(t, item.LatestQuota.CredentialInvalid)
 	require.Equal(t, "Authentication failed (HTTP 401)", source.Error)
+	require.True(t, source.CredentialInvalid)
 	require.NotSame(t, source, item.LatestQuota)
+
+	raw, err := json.Marshal(item.LatestQuota)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "credential_invalid")
+	require.NotContains(t, string(raw), "Authentication failed")
 }
 
 func TestUserMonitorViewKeepsQuotaHiddenWhenSwitchOff(t *testing.T) {
