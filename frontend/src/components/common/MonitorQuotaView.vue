@@ -33,7 +33,7 @@
       </span>
     </div>
 
-    <div v-if="!snapshot.success" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="snapshot.error" data-testid="monitor-quota-error">
+    <div v-if="!snapshot.success" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="errorTitle" data-testid="monitor-quota-error">
       {{ truncatedError }}
     </div>
   </div>
@@ -54,6 +54,8 @@ import UsageProgressBar from '@/components/account/UsageProgressBar.vue'
  */
 const props = defineProps<{
   snapshot?: MonitorQuotaSnapshot | null
+  // 用户页不展示上游错误原文。管理端不传，仍显示原文。
+  concealError?: boolean
 }>()
 
 const { t, te } = useI18n()
@@ -124,7 +126,10 @@ const balanceRows = computed(() => {
   return []
 })
 
+const errorTitle = computed(() => (props.concealError ? undefined : props.snapshot?.error))
+
 const truncatedError = computed(() => {
+  if (props.concealError) return t('monitorCommon.quota.unavailable')
   const error = props.snapshot?.error || t('monitorCommon.quota.unavailable')
   return error.length > 48 ? `${error.slice(0, 48)}…` : error
 })

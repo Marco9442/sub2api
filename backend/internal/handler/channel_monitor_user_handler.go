@@ -141,9 +141,19 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		Timeline:             timeline,
 	}
 	if includeQuota {
-		item.LatestQuota = v.LatestQuota
+		item.LatestQuota = userQuotaSnapshot(v.LatestQuota)
 	}
 	return item
+}
+
+// userQuotaSnapshot 复制快照并去掉错误原文。用户页只需要知道这次没拿到配额。
+func userQuotaSnapshot(src *domain.MonitorQuotaSnapshot) *domain.MonitorQuotaSnapshot {
+	if src == nil {
+		return nil
+	}
+	copied := *src
+	copied.Error = ""
+	return &copied
 }
 
 func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUserDetailResponse {
