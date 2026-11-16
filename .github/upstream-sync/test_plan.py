@@ -239,7 +239,7 @@ class WorkflowContractTest(unittest.TestCase):
         docs = root.joinpath("docs", "ci-cd.md").read_text()
         for phrase in (
             "v0.2.21-fork.1",
-            "v0.2.21-fork.2",
+            "同一 `VERSION` 的下一个序号取已有 tag 的最大序号加 1，不在本文写死",
             "docker buildx imagetools inspect",
             "config.Labels",
             "content at ",
@@ -257,6 +257,8 @@ class WorkflowContractTest(unittest.TestCase):
             "不要把测试文件路径直接传给",
         ):
             self.assertIn(phrase, docs)
+        self.assertNotIn("下一次同一", docs)
+        self.assertNotRegex(docs, r"fork tag 是 `v")
         contributing = root.joinpath("CONTRIBUTING.md").read_text()
         for phrase in (
             "credential.helper",
