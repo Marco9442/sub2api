@@ -28,7 +28,10 @@ func newCustomMonitorHTTPClient() *http.Client {
 		IdleConnTimeout:     monitorIdleConnTimeout,
 		TLSHandshakeTimeout: monitorTLSHandshakeTimeout,
 	}
-	return &http.Client{Transport: servertiming.WrapRoundTripper(tr)}
+	return &http.Client{
+		Transport:     servertiming.WrapRoundTripper(tr),
+		CheckRedirect: monitorCheckRedirect,
+	}
 }
 
 type monitorStreamProtocol struct {
