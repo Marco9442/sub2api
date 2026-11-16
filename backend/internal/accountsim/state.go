@@ -68,25 +68,26 @@ type Account struct {
 }
 
 // Window 是一个额度窗口内的累计用量。
-// ActualCost 是生成时按当时倍率算出的费用。旧数据没有该字段，展示时回退到 Cost，不再乘当前倍率。
+// ActualCost 是生成时按当时倍率算出的费用。字段缺失表示旧数据，展示时回退到 Cost。
+// 合法的零费用必须留下非空指针，不能和缺失混成同一个零值。
 type Window struct {
 	Start      time.Time `json:"start"`
 	Requests   int64     `json:"requests"`
 	Tokens     int64     `json:"tokens"`
 	Cost       float64   `json:"cost"`
-	ActualCost float64   `json:"actual_cost,omitempty"`
+	ActualCost *float64  `json:"actual_cost,omitempty"`
 }
 
 // DayUsage 是一个自然日（北京时间）的用量汇总。
 type DayUsage struct {
-	Date                string  `json:"date"`
-	Requests            int64   `json:"requests"`
-	InputTokens         int64   `json:"input_tokens"`
-	OutputTokens        int64   `json:"output_tokens"`
-	CacheReadTokens     int64   `json:"cache_read_tokens"`
-	CacheCreationTokens int64   `json:"cache_creation_tokens"`
-	Cost                float64 `json:"cost"`
-	ActualCost          float64 `json:"actual_cost"`
+	Date                string   `json:"date"`
+	Requests            int64    `json:"requests"`
+	InputTokens         int64    `json:"input_tokens"`
+	OutputTokens        int64    `json:"output_tokens"`
+	CacheReadTokens     int64    `json:"cache_read_tokens"`
+	CacheCreationTokens int64    `json:"cache_creation_tokens"`
+	Cost                float64  `json:"cost"`
+	ActualCost          *float64 `json:"actual_cost,omitempty"`
 	// Models 记录当天各模型的请求数，供统计弹窗的模型分布使用。
 	Models map[string]int64 `json:"models,omitempty"`
 }
@@ -94,6 +95,30 @@ type DayUsage struct {
 // Tokens 返回当天全部 Token。
 func (d DayUsage) Tokens() int64 {
 	return d.InputTokens + d.OutputTokens + d.CacheReadTokens + d.CacheCreationTokens
+}
+
+func costPtr(v float64) *float64 { return &v }
+
+func costOrZero(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func cloneCost(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	return costPtr(*v)
+}
+
+// addCost 把费用累加到指针上。第一次写入即使是 0 也留下指针，便于和旧数据的缺失字段区分。
+func addCost(dst **float64, amount float64) {
+	if *dst == nil {
+		*dst = costPtr(0)
+	}
+	**dst += amount
 }
 
 // Group 是模拟分组。

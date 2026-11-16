@@ -256,10 +256,11 @@ func resetAt(start time.Time, dur time.Duration, now time.Time) *time.Time {
 	return &end
 }
 
-// storedCost 读取生成时保存的费用。旧数据没有该字段时回退到标准费用，不再乘当前倍率。
-func storedCost(actual, standard float64) float64 {
-	if actual != 0 || standard == 0 {
-		return actual
+// storedCost 读取生成时保存的费用。字段缺失时回退到标准费用，不再乘当前倍率。
+// 非空指针里的 0 是合法实际费用，不能当成缺失。
+func storedCost(actual *float64, standard float64) float64 {
+	if actual != nil {
+		return *actual
 	}
 	return standard
 }

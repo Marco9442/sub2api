@@ -97,7 +97,7 @@ func accountStats(account *Account, now time.Time, days int) usagestats.AccountU
 }
 
 func (d DayUsage) empty() bool {
-	return d.Requests == 0 && d.Tokens() == 0 && d.Cost == 0 && d.ActualCost == 0
+	return d.Requests == 0 && d.Tokens() == 0 && d.Cost == 0 && costOrZero(d.ActualCost) == 0
 }
 
 func dayOf(t time.Time) time.Time {
@@ -117,6 +117,7 @@ func meanDay(days []DayUsage) DayUsage {
 	n := float64(len(days))
 	var requests, input, output, cacheRead, cacheWrite int64
 	var cost, actual float64
+	actualKnown := true
 	models := map[string]float64{}
 	for _, day := range days {
 		requests += day.Requests
@@ -125,7 +126,11 @@ func meanDay(days []DayUsage) DayUsage {
 		cacheRead += day.CacheReadTokens
 		cacheWrite += day.CacheCreationTokens
 		cost += day.Cost
-		actual += day.ActualCost
+		if day.ActualCost == nil {
+			actualKnown = false
+		} else {
+			actual += *day.ActualCost
+		}
 		for name, count := range day.Models {
 			models[name] += float64(count)
 		}
@@ -137,8 +142,10 @@ func meanDay(days []DayUsage) DayUsage {
 		CacheReadTokens:     int64(math.Round(float64(cacheRead) / n)),
 		CacheCreationTokens: int64(math.Round(float64(cacheWrite) / n)),
 		Cost:                cost / n,
-		ActualCost:          actual / n,
 		Models:              map[string]int64{},
+	}
+	if actualKnown {
+		out.ActualCost = costPtr(actual / n)
 	}
 	for name, count := range models {
 		if rounded := int64(math.Round(count / n)); rounded > 0 {

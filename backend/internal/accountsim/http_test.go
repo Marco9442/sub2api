@@ -55,7 +55,7 @@ func fixtureState() *State {
 		account.Intensity = 1
 		account.CreatedAt, account.UpdatedAt = created, created
 		account.RetireAt = fixtureNow.Add(7 * 24 * time.Hour)
-		account.Days = []DayUsage{{Date: fixtureNow.Format(time.DateOnly), Requests: 40, InputTokens: 1000, OutputTokens: 500, Cost: 2, ActualCost: 2, Models: map[string]int64{"claude-sonnet-5-5": 40}}}
+		account.Days = []DayUsage{{Date: fixtureNow.Format(time.DateOnly), Requests: 40, InputTokens: 1000, OutputTokens: 500, Cost: 2, ActualCost: costPtr(2), Models: map[string]int64{"claude-sonnet-5-5": 40}}}
 		account.TotalRequests, account.TotalTokens, account.TotalCost, account.TotalActualCost = 40, 1500, 2, 2
 		state.Accounts[account.ID] = account
 	}
@@ -323,11 +323,11 @@ func TestUsageInfoCoversVisiblePlatforms(t *testing.T) {
 	if grok.GrokBilling.MonthlyLimitCents != nil {
 		t.Fatal("只有周额度时不应带月额度")
 	}
-	gemini := usageInfo(&Account{Platform: "gemini", Type: "oauth", Tier: "ultra", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5, ActualCost: 5}}}, now)
+	gemini := usageInfo(&Account{Platform: "gemini", Type: "oauth", Tier: "ultra", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5, ActualCost: costPtr(5)}}}, now)
 	if gemini.GeminiSharedDaily == nil || gemini.GeminiSharedDaily.Utilization <= 0 {
 		t.Fatalf("gemini 日额度不符: %+v", gemini.GeminiSharedDaily)
 	}
-	geminiKey := usageInfo(&Account{Platform: "gemini", Type: "apikey", Tier: "pro", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5, ActualCost: 5}}}, now)
+	geminiKey := usageInfo(&Account{Platform: "gemini", Type: "apikey", Tier: "pro", RateMultiplier: 1, Days: []DayUsage{{Date: now.In(cst).Format(time.DateOnly), Cost: 5, ActualCost: costPtr(5)}}}, now)
 	if geminiKey.GeminiSharedDaily != nil {
 		t.Fatalf("gemini API Key 不应有日额度条: %+v", geminiKey.GeminiSharedDaily)
 	}
@@ -385,9 +385,9 @@ func statsAccount(store *memStore) {
 	account.CreatedAt = time.Date(2026, 9, 1, 8, 0, 0, 0, cst)
 	account.RateMultiplier = 2
 	account.Days = []DayUsage{
-		{Date: "2026-08-15", Requests: 99999, InputTokens: 99999, Cost: 999, ActualCost: 999, Models: map[string]int64{"claude-opus-5-5": 99999}},
-		{Date: "2026-11-14", Requests: 20, InputTokens: 400, OutputTokens: 100, Cost: 1, ActualCost: 3, Models: map[string]int64{"claude-sonnet-5-5": 20}},
-		{Date: "2026-11-15", Requests: 40, InputTokens: 1000, OutputTokens: 500, Cost: 2, ActualCost: 6, Models: map[string]int64{"claude-sonnet-5-5": 30, "claude-opus-5-5": 10}},
+		{Date: "2026-08-15", Requests: 99999, InputTokens: 99999, Cost: 999, ActualCost: costPtr(999), Models: map[string]int64{"claude-opus-5-5": 99999}},
+		{Date: "2026-11-14", Requests: 20, InputTokens: 400, OutputTokens: 100, Cost: 1, ActualCost: costPtr(3), Models: map[string]int64{"claude-sonnet-5-5": 20}},
+		{Date: "2026-11-15", Requests: 40, InputTokens: 1000, OutputTokens: 500, Cost: 2, ActualCost: costPtr(6), Models: map[string]int64{"claude-sonnet-5-5": 30, "claude-opus-5-5": 10}},
 	}
 }
 
@@ -807,7 +807,7 @@ func TestDisplayedCostUsesStoredValue(t *testing.T) {
 	day := fixtureNow.In(cst).Format(time.DateOnly)
 	account := &Account{
 		Platform: "anthropic", Type: "oauth", Tier: "max", RateMultiplier: 4,
-		Days:     []DayUsage{{Date: day, Requests: 3, Cost: 2, ActualCost: 5}},
+		Days:     []DayUsage{{Date: day, Requests: 3, Cost: 2, ActualCost: costPtr(5)}},
 		Window5h: Window{Start: fixtureNow.Add(-time.Hour), Requests: 3, Tokens: 10, Cost: 2},
 	}
 	stats := todayStats(account, fixtureNow)
@@ -818,9 +818,89 @@ func TestDisplayedCostUsesStoredValue(t *testing.T) {
 	if window.Cost != 2 || window.UserCost != 2 || window.StandardCost != 2 {
 		t.Fatalf("旧窗口应回退标准费用: %+v", window)
 	}
-	account.Window5h.ActualCost = 7
+	account.Window5h.ActualCost = costPtr(7)
 	window = windowStatsOf(account.Window5h)
 	if window.Cost != 7 || window.UserCost != 7 {
 		t.Fatalf("新窗口应读保存费用: %+v", window)
+	}
+}
+
+func TestActualCostZeroIsKeptAndMissingFallsBack(t *testing.T) {
+	var missing DayUsage
+	if err := json.Unmarshal([]byte(`{"cost":4}`), &missing); err != nil {
+		t.Fatal(err)
+	}
+	if missing.ActualCost != nil || storedCost(missing.ActualCost, missing.Cost) != 4 {
+		t.Fatalf("缺字段应回退标准费用: %+v", missing)
+	}
+	var zero DayUsage
+	if err := json.Unmarshal([]byte(`{"cost":4,"actual_cost":0}`), &zero); err != nil {
+		t.Fatal(err)
+	}
+	if zero.ActualCost == nil || *zero.ActualCost != 0 || storedCost(zero.ActualCost, zero.Cost) != 0 {
+		t.Fatalf("零值应保留并展示为 0: %+v", zero.ActualCost)
+	}
+	encoded, err := json.Marshal(zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"actual_cost":0`) {
+		t.Fatalf("零值应写回字段: %s", encoded)
+	}
+	var window Window
+	if err := json.Unmarshal([]byte(`{"cost":3}`), &window); err != nil {
+		t.Fatal(err)
+	}
+	if window.ActualCost != nil || storedCost(window.ActualCost, window.Cost) != 3 {
+		t.Fatalf("旧窗口缺字段应回退: %+v", window)
+	}
+}
+
+func TestZeroRateKeepsActualCost(t *testing.T) {
+	account := &Account{
+		Platform: "anthropic", Type: "oauth", Tier: "max", RateMultiplier: 0, Intensity: 1,
+		CreatedAt: fixtureNow.Add(-time.Hour),
+	}
+	consume(account, fixtureNow, newRNG(1, fixtureNow.Unix()), DefaultConfig())
+	if len(account.Days) == 0 || account.Days[0].Cost <= 0 {
+		t.Fatal("应产生标准费用")
+	}
+	day := account.Days[0]
+	if day.ActualCost == nil || *day.ActualCost != 0 || account.Window5h.ActualCost == nil || *account.Window5h.ActualCost != 0 {
+		t.Fatalf("倍率为 0 时应记下实际费用 0: day=%v window=%v", day.ActualCost, account.Window5h.ActualCost)
+	}
+	stats := todayStats(account, fixtureNow)
+	if stats.Cost != 0 || stats.UserCost != 0 || stats.StandardCost != day.Cost {
+		t.Fatalf("今日展示应使用零实际费用: %+v", stats)
+	}
+	window := windowStatsOf(account.Window5h)
+	if window.Cost != 0 || window.StandardCost != account.Window5h.Cost {
+		t.Fatalf("窗口展示应使用零实际费用: %+v", window)
+	}
+}
+
+func TestMeanDayKeepsMissingActualCost(t *testing.T) {
+	mixed := meanDay([]DayUsage{{Cost: 2, ActualCost: costPtr(3)}, {Cost: 4}})
+	if mixed.ActualCost != nil || mixed.Cost != 3 {
+		t.Fatalf("有缺失时估算日不应填零: %+v", mixed)
+	}
+	full := meanDay([]DayUsage{{Cost: 2, ActualCost: costPtr(3)}, {Cost: 4, ActualCost: costPtr(6)}})
+	if full.ActualCost == nil || *full.ActualCost != 4.5 {
+		t.Fatalf("全部有值时应取平均: %v", full.ActualCost)
+	}
+}
+
+func TestCloneAccountCopiesActualCost(t *testing.T) {
+	src := &Account{
+		Window5h: Window{Cost: 2, ActualCost: costPtr(0)},
+		Window7d: Window{Cost: 3, ActualCost: costPtr(1)},
+		Days:     []DayUsage{{Date: "2026-11-15", Cost: 2, ActualCost: costPtr(0), Models: map[string]int64{"m": 1}}},
+	}
+	dst := cloneAccount(src)
+	*dst.Window5h.ActualCost = 9
+	*dst.Window7d.ActualCost = 8
+	*dst.Days[0].ActualCost = 7
+	if src.Window5h.ActualCost == nil || *src.Window5h.ActualCost != 0 || *src.Window7d.ActualCost != 1 || *src.Days[0].ActualCost != 0 {
+		t.Fatal("改副本不应改原账号的实际费用")
 	}
 }

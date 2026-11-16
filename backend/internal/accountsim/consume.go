@@ -55,7 +55,7 @@ func consume(account *Account, t time.Time, r *rng, cfg Config) {
 	}
 	actual := cost * account.RateMultiplier
 	day.Cost += cost
-	day.ActualCost += actual
+	addCost(&day.ActualCost, actual)
 	account.TotalRequests += requests
 	account.TotalTokens += tokens
 	account.TotalCost += cost
@@ -75,7 +75,7 @@ func addWindow(w *Window, t time.Time, requests, tokens int64, cost, actual floa
 	w.Requests += requests
 	w.Tokens += tokens
 	w.Cost += cost
-	w.ActualCost += actual
+	addCost(&w.ActualCost, actual)
 }
 
 func limitOnCap(account *Account, t time.Time, prof profile) {

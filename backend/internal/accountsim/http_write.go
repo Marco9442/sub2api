@@ -360,6 +360,8 @@ func cloneAccount(a *Account) *Account {
 		return nil
 	}
 	out := *a
+	out.Window5h.ActualCost = cloneCost(a.Window5h.ActualCost)
+	out.Window7d.ActualCost = cloneCost(a.Window7d.ActualCost)
 	out.GroupIDs = append([]int64(nil), a.GroupIDs...)
 	out.Credentials = merged(nil, a.Credentials)
 	out.Extra = merged(nil, a.Extra)
@@ -373,6 +375,7 @@ func cloneAccount(a *Account) *Account {
 		out.Days = make([]DayUsage, len(a.Days))
 		for i := range a.Days {
 			out.Days[i] = a.Days[i]
+			out.Days[i].ActualCost = cloneCost(a.Days[i].ActualCost)
 			if a.Days[i].Models != nil {
 				out.Days[i].Models = make(map[string]int64, len(a.Days[i].Models))
 				for name, count := range a.Days[i].Models {
