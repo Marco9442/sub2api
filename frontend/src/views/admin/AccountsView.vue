@@ -133,6 +133,17 @@
                         </span>
                         <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
                       </button>
+                      <button
+                        v-if="openAccountSimConfig"
+                        type="button"
+                        class="account-tools-menu-item"
+                        @click="openAccountSimConfigFromMenu"
+                      >
+                        <span class="account-tools-menu-icon bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-200">
+                          <Icon name="cog" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('accountSim.open') }}</span>
+                      </button>
 
                       <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       <div class="px-2 py-2">
@@ -490,7 +501,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { ref, reactive, computed, inject, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { openAccountSimConfigKey } from '@/composables/accountSimPage'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -1580,6 +1592,13 @@ const openErrorPassthrough = () => {
 const openTLSFingerprintProfiles = () => {
   closeAccountToolsDropdown()
   showTLSFingerprintProfiles.value = true
+}
+
+const openAccountSimConfig = inject(openAccountSimConfigKey, null)
+const openAccountSimConfigFromMenu = () => {
+  if (!openAccountSimConfig) return
+  closeAccountToolsDropdown()
+  openAccountSimConfig()
 }
 
 const syncPendingListChanges = async () => {

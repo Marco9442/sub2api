@@ -58,6 +58,9 @@ vi.mock('@/api/admin', () => ({
     tlsFingerprintProfiles: {
       list: vi.fn().mockResolvedValue([]),
     },
+    grok: {
+      createFromSSO: vi.fn(),
+    },
   },
 }))
 

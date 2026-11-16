@@ -96,10 +96,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
+import { isAccountSimPage, withAccountSimRequest } from '@/api/accountSim'
 import { useAppStore } from '@/stores/app'
 import type { AdminDataImportResult, AdminDataPayload } from '@/types'
 
@@ -119,6 +120,10 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const importing = ref(false)
+let abandonImport = false
+onUnmounted(() => {
+  abandonImport = true
+})
 const files = ref<File[]>([])
 const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
@@ -272,6 +277,8 @@ const handleImport = async () => {
     return
   }
 
+  // 按下时记住来源。读文件期间离开页面则取消；只在发出导入的这一次固定来源。
+  const startedOnSim = isAccountSimPage()
   importing.value = true
   try {
     const dataPayloads: AdminDataPayload[] = []
@@ -292,11 +299,14 @@ const handleImport = async () => {
       dataPayloads.push(parsed)
     }
     const dataPayload = mergeDataPayloads(dataPayloads)
+    if (abandonImport || (startedOnSim && !isAccountSimPage())) return
 
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    })
+    const res = await withAccountSimRequest(startedOnSim, () =>
+      adminAPI.accounts.importData({
+        data: dataPayload,
+        skip_default_group_bind: true
+      })
+    )
 
     result.value = res
 

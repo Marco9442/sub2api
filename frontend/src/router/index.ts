@@ -549,6 +549,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/accounts-2',
+    name: 'AdminAccounts2',
+    component: () => import('@/views/admin/AccountsSimView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Account Management #2',
+      titleKey: 'nav.accounts2'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

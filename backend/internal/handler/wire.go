@@ -206,6 +206,8 @@ func ProvideHandlers(
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
+	// 让 Wire 在组装 Handlers、进而注册路由之前先启动账号管理 #2。
+	_ AccountSimStop,
 ) *Handlers {
 	return &Handlers{
 		Auth:             authHandler,

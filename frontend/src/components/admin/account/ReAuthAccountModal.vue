@@ -190,10 +190,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { bindAccountSimCalls, isAccountSimPage } from '@/api/accountSim'
 import {
   useAccountOAuth,
   type AddMethod,
@@ -232,13 +233,19 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 const { t } = useI18n()
+const requestSim = isAccountSimPage()
+let requestAlive = true
+onBeforeUnmount(() => {
+  requestAlive = false
+})
+const simAccounts = bindAccountSimCalls(adminAPI.accounts, requestSim, () => requestAlive)
 
-// OAuth composables
-const claudeOAuth = useAccountOAuth()
-const openaiOAuth = useOpenAIOAuth()
-const geminiOAuth = useGeminiOAuth()
-const antigravityOAuth = useAntigravityOAuth()
-const grokOAuth = useGrokOAuth()
+// OAuth composables。方法内部的请求在第一个 await 前发出，因此包住方法即可固定来源。
+const claudeOAuth = bindAccountSimCalls(useAccountOAuth(), requestSim, () => requestAlive)
+const openaiOAuth = bindAccountSimCalls(useOpenAIOAuth(), requestSim, () => requestAlive)
+const geminiOAuth = bindAccountSimCalls(useGeminiOAuth(), requestSim, () => requestAlive)
+const antigravityOAuth = bindAccountSimCalls(useAntigravityOAuth(), requestSim, () => requestAlive)
+const grokOAuth = bindAccountSimCalls(useGrokOAuth(), requestSim, () => requestAlive)
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -416,7 +423,7 @@ const handleExchangeCode = async () => {
     const extra = oauthClient.buildExtraInfo(tokenInfo)
 
     try {
-      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
         type: 'oauth',
         credentials,
         extra
@@ -450,11 +457,11 @@ const handleExchangeCode = async () => {
     const credentials = geminiOAuth.buildCredentials(tokenInfo)
 
     try {
-      await adminAPI.accounts.update(props.account.id, {
+      await simAccounts.update(props.account.id, {
         type: 'oauth',
         credentials
       })
-      const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
+      const updatedAccount = await simAccounts.clearError(props.account.id)
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
       emit('reauthorized', updatedAccount)
       handleClose()
@@ -482,11 +489,11 @@ const handleExchangeCode = async () => {
     const credentials = antigravityOAuth.buildCredentials(tokenInfo)
 
     try {
-      await adminAPI.accounts.update(props.account.id, {
+      await simAccounts.update(props.account.id, {
         type: 'oauth',
         credentials
       })
-      const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
+      const updatedAccount = await simAccounts.clearError(props.account.id)
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
       emit('reauthorized', updatedAccount)
       handleClose()
@@ -514,7 +521,7 @@ const handleExchangeCode = async () => {
     const extra = grokOAuth.buildExtraInfo(tokenInfo)
 
     try {
-      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
         type: 'oauth',
         credentials,
         extra
@@ -542,7 +549,7 @@ const handleExchangeCode = async () => {
           ? '/admin/accounts/exchange-code'
           : '/admin/accounts/exchange-setup-token-code'
 
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+      const tokenInfo = await simAccounts.exchangeCode(endpoint, {
         session_id: sessionId,
         code: authCode.trim(),
         ...proxyConfig
@@ -550,7 +557,7 @@ const handleExchangeCode = async () => {
 
       const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
-      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
         type: addMethod.value as 'oauth' | 'setup-token',
         credentials: tokenInfo as unknown as Record<string, unknown>,
         extra
@@ -581,7 +588,7 @@ const handleCookieAuth = async (sessionKey: string) => {
         ? '/admin/accounts/cookie-auth'
         : '/admin/accounts/setup-token-cookie-auth'
 
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+    const tokenInfo = await simAccounts.exchangeCode(endpoint, {
       session_id: '',
       code: sessionKey.trim(),
       ...proxyConfig
@@ -589,7 +596,7 @@ const handleCookieAuth = async (sessionKey: string) => {
 
     const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
-    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+    const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
       type: addMethod.value as 'oauth' | 'setup-token',
       credentials: tokenInfo as unknown as Record<string, unknown>,
       extra
@@ -616,7 +623,7 @@ const applyGrokReauthTokenInfo = async (tokenInfo: {
   if (!props.account) return
   const credentials = grokOAuth.buildCredentials(tokenInfo as any)
   const extra = grokOAuth.buildExtraInfo(tokenInfo as any)
-  const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+  const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
     type: 'oauth',
     credentials,
     extra
@@ -647,7 +654,7 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
       const tokenInfo = await openaiOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
       if (!tokenInfo) return
 
-      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
         type: 'oauth',
         credentials: openaiOAuth.buildCredentials(tokenInfo),
         extra: openaiOAuth.buildExtraInfo(tokenInfo)
@@ -675,7 +682,7 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
     const tokenInfo = await antigravityOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
     if (!tokenInfo) return
 
-    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+    const updatedAccount = await simAccounts.applyOAuthCredentials(props.account.id, {
       type: 'oauth',
       credentials: antigravityOAuth.buildCredentials(tokenInfo, refreshToken)
     })

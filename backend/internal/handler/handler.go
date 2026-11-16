@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/accountsim"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 )
@@ -43,7 +44,13 @@ type AdminHandlers struct {
 	Affiliate              *admin.AffiliateHandler
 	Compliance             *admin.ComplianceHandler
 	AuditLog               *admin.AuditLogHandler
+	// AccountSim 是账号管理 #2。为空时不注册路由，真实账号接口不受影响。
+	AccountSim *accountsim.Handler
 }
+
+// AccountSimStop 停止账号管理 #2 的后台演进。
+// 独立类型用来和清理函数的 func() 区分，Wire 才能同时注入两者。
+type AccountSimStop func()
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
