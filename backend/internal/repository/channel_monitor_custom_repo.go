@@ -172,7 +172,7 @@ func (r *channelMonitorRepository) ListReplaceBodies(ctx context.Context) ([]ser
 	if err != nil {
 		return nil, fmt.Errorf("list channel monitor replace bodies: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]service.ChannelMonitorBodyRef, 0)
 	for rows.Next() {
