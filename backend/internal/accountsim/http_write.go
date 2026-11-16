@@ -144,7 +144,7 @@ func (h *Handler) create(c *gin.Context, _ params) {
 	if !bind(c, &req) {
 		return
 	}
-	if !Supported(req.Platform, req.Type, defaultTier(req.Platform)) {
+	if !ManualSupported(req.Platform, req.Type, defaultTier(req.Platform)) {
 		response.BadRequest(c, "Unsupported platform or account type")
 		return
 	}

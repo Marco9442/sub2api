@@ -695,6 +695,45 @@ func TestUserBreakdownIsEmptyAndDoesNotSave(t *testing.T) {
 	}
 }
 
+func TestCreateAllowsRealPageTypes(t *testing.T) {
+	router, store := newTestServer(t)
+	allowed := []struct{ platform, typ string }{
+		{"anthropic", "oauth"},
+		{"anthropic", "bedrock"},
+		{"anthropic", "service_account"},
+		{"gemini", "service_account"},
+		{"antigravity", "apikey"},
+	}
+	for _, item := range allowed {
+		body := `{"name":"manual","platform":"` + item.platform + `","type":"` + item.typ + `","credentials":{"api_key":"k"}}`
+		status, resp := call(t, router, http.MethodPost, "/accounts", body)
+		created := decode[map[string]any](t, resp.Data)
+		if status != http.StatusOK || created["platform"] != item.platform || created["type"] != item.typ {
+			t.Fatalf("%s/%s 应可创建: %d %+v", item.platform, item.typ, status, resp)
+		}
+		auto := Supported(item.platform, item.typ, defaultTier(item.platform))
+		if item.typ == "oauth" && !auto {
+			t.Fatalf("自动生成仍应包含 %s/%s", item.platform, item.typ)
+		}
+		if item.typ != "oauth" && auto {
+			t.Fatalf("自动生成表不应包含 %s/%s", item.platform, item.typ)
+		}
+	}
+	rejected := []string{
+		`{"name":"x","platform":"openai","type":"bedrock","credentials":{"api_key":"k"}}`,
+		`{"name":"x","platform":"antigravity","type":"upstream","credentials":{"api_key":"k"}}`,
+	}
+	for _, body := range rejected {
+		status, resp := call(t, router, http.MethodPost, "/accounts", body)
+		if status != http.StatusBadRequest || !strings.Contains(resp.Message, "Unsupported") {
+			t.Fatalf("表外组合应拒绝: %d %+v body=%s", status, resp, body)
+		}
+	}
+	if store.saves != len(allowed) {
+		t.Fatalf("只应保存成功的创建: %d", store.saves)
+	}
+}
+
 func TestCreateRejectsUnsupportedPlatform(t *testing.T) {
 	router, store := newTestServer(t)
 	status, resp := call(t, router, http.MethodPost, "/accounts", `{"name":"x","platform":"unknown","type":"apikey","credentials":{"api_key":"k"}}`)

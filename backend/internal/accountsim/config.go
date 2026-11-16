@@ -200,17 +200,36 @@ func fillCombinationWeights(cfg *Config) {
 	}
 }
 
-// Supported 报告某平台是否支持给定的认证类型与订阅等级。
+// Supported 报告某平台是否支持给定的认证类型与订阅等级。自动生成只用这张表。
 func Supported(platform, accountType, tier string) bool {
-	ok := false
-	for _, typ := range platformTypes[platform] {
+	return typeListed(platformTypes[platform], accountType) && tierListed(platform, tier)
+}
+
+// manualExtraTypes 是真实创建页允许、但自动生成不使用的认证类型。
+var manualExtraTypes = map[string][]string{
+	"anthropic":   {"bedrock", "service_account"},
+	"gemini":      {"service_account"},
+	"antigravity": {"apikey"},
+}
+
+// ManualSupported 报告手动创建是否接受该组合。未知平台和表外组合仍然拒绝。
+func ManualSupported(platform, accountType, tier string) bool {
+	if Supported(platform, accountType, tier) {
+		return true
+	}
+	return typeListed(manualExtraTypes[platform], accountType) && tierListed(platform, tier)
+}
+
+func typeListed(types []string, accountType string) bool {
+	for _, typ := range types {
 		if typ == accountType {
-			ok = true
+			return true
 		}
 	}
-	if !ok {
-		return false
-	}
+	return false
+}
+
+func tierListed(platform, tier string) bool {
 	for _, item := range platformTiers[platform] {
 		if item.name == tier {
 			return true
