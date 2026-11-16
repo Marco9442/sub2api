@@ -236,6 +236,14 @@ func TestNormalizeChannelMonitorMode_Custom(t *testing.T) {
 	require.Equal(t, ChannelMonitorModeV1, normalizeChannelMonitorMode(""))
 }
 
+func TestRejectEnteringCustomFromSettings(t *testing.T) {
+	require.ErrorIs(t, RejectEnteringCustomFromSettings(ChannelMonitorModeV1, " Custom "), ErrChannelMonitorCustomModeStale)
+	require.ErrorIs(t, RejectEnteringCustomFromSettings(ChannelMonitorModeV2, ChannelMonitorModeCustom), ErrChannelMonitorCustomModeStale)
+	require.NoError(t, RejectEnteringCustomFromSettings(ChannelMonitorModeCustom, " custom "))
+	require.NoError(t, RejectEnteringCustomFromSettings(ChannelMonitorModeCustom, ChannelMonitorModeV1))
+	require.NoError(t, RejectEnteringCustomFromSettings(ChannelMonitorModeV1, ChannelMonitorModeV2))
+}
+
 func TestActiveProbesAllowed_Custom(t *testing.T) {
 	require.True(t, (ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeCustom}).ActiveProbesAllowed())
 	require.False(t, (ChannelMonitorRuntime{Enabled: false, Mode: ChannelMonitorModeCustom}).ActiveProbesAllowed())

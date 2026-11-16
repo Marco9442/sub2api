@@ -249,6 +249,11 @@ var (
 		"CHANNEL_MONITOR_CUSTOM_STREAM_REQUIRED",
 		customProbeRequiresStream,
 	)
+	// ErrChannelMonitorCustomModeStale 通用设置试图进入尚未生效的 Custom。
+	ErrChannelMonitorCustomModeStale = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_CUSTOM_MODE_STALE",
+		"channel monitor mode is stale; switch to Custom on the channel monitor page, then save again",
+	)
 )
 
 // customProbeRequiresStream 是 Custom 拒绝非流式探测时给管理员和历史记录的同一句说明。

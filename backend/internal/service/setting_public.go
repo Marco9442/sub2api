@@ -404,6 +404,18 @@ func normalizeChannelMonitorMode(raw string) string {
 	}
 }
 
+// RejectEnteringCustomFromSettings 拒绝从非 Custom 经通用设置进入 Custom。
+// 已经生效时允许原样保存。离开 Custom 仍走这里。进入 Custom 只走渠道监控页。
+func RejectEnteringCustomFromSettings(previous, requested string) error {
+	if normalizeChannelMonitorMode(requested) != ChannelMonitorModeCustom {
+		return nil
+	}
+	if normalizeChannelMonitorMode(previous) == ChannelMonitorModeCustom {
+		return nil
+	}
+	return ErrChannelMonitorCustomModeStale
+}
+
 // parseChannelMonitorInterval parses the stored string and clamps to [15, 3600].
 // Empty / invalid input falls back to channelMonitorIntervalFallback.
 func parseChannelMonitorInterval(raw string) int {

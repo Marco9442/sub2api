@@ -509,6 +509,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	// 通用设置可以保留已经生效的 Custom，不能从这里进入。进入走渠道监控页。
+	requestedChannelMonitorMode := previousSettings.ChannelMonitorMode
+	if req.ChannelMonitorMode != nil {
+		requestedChannelMonitorMode = *req.ChannelMonitorMode
+	}
+	if err := service.RejectEnteringCustomFromSettings(previousSettings.ChannelMonitorMode, requestedChannelMonitorMode); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	previousAuthSourceDefaults, err := h.settingService.GetAuthSourceDefaultSettings(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
