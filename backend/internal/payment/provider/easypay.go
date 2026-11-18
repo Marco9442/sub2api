@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -176,7 +177,10 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 		"pid": e.config["pid"], "type": paymentType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
-		"money": req.Amount, "clientip": req.ClientIP,
+		"money": req.Amount,
+	}
+	if clientIP := strings.TrimSpace(req.ClientIP); net.ParseIP(clientIP) != nil {
+		params["clientip"] = clientIP
 	}
 	if cid := e.resolveCID(paymentType); cid != "" {
 		params["cid"] = cid

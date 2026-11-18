@@ -25,6 +25,9 @@ func SessionBindingContext(cfg *config.Config) gin.HandlerFunc {
 			IP:        ip.GetSecurityClientIP(c, forwardedIPSettings.TrustForwardedIP),
 			UserAgent: userAgent,
 		}
+		if id, ok := ip.CurrentIdentity(c); ok {
+			binding = sessionBindingForIdentity(id, userAgent)
+		}
 		c.Request = c.Request.WithContext(service.WithSessionBinding(c.Request.Context(), binding))
 		c.Next()
 	}
@@ -36,9 +39,20 @@ func requestSessionBinding(c *gin.Context) *service.SessionBinding {
 	if binding := service.SessionBindingFromContext(c.Request.Context()); binding != nil {
 		return binding
 	}
+	if id, ok := ip.CurrentIdentity(c); ok {
+		return sessionBindingForIdentity(id, normalizePersistentText(c.Request.UserAgent(), maxPersistentUserAgentBytes))
+	}
 	return &service.SessionBinding{
 		IP:        ip.GetTrustedClientIP(c),
 		UserAgent: normalizePersistentText(c.Request.UserAgent(), maxPersistentUserAgentBytes),
+	}
+}
+
+func sessionBindingForIdentity(id ip.Identity, userAgent string) *service.SessionBinding {
+	return &service.SessionBinding{
+		IP:        id.ClientIP,
+		HashKey:   id.BindingKey(),
+		UserAgent: userAgent,
 	}
 }
 
@@ -48,6 +62,9 @@ func SecurityClientIP(c *gin.Context) string {
 	if binding := service.SessionBindingFromContext(c.Request.Context()); binding != nil &&
 		strings.TrimSpace(binding.IP) != "" {
 		return binding.IP
+	}
+	if id, ok := ip.CurrentIdentity(c); ok {
+		return id.ClientIP
 	}
 	return ip.GetTrustedClientIP(c)
 }
