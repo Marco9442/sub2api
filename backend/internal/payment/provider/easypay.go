@@ -132,9 +132,10 @@ func (e *EasyPay) MerchantIdentityMetadata() map[string]string {
 
 func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	// Payment mode determined by instance config, not payment type.
-	// "popup" → hosted page (submit.php); "qrcode"/default → API call (mapi.php).
+	// "popup" uses submit.php. "qrcode"/default uses mapi.php when clientip parses.
+	// mapi.php requires clientip, so a missing address uses submit.php instead.
 	mode := e.config["paymentMode"]
-	if mode == paymentModePopup {
+	if mode == paymentModePopup || net.ParseIP(strings.TrimSpace(req.ClientIP)) == nil {
 		return e.createRedirectPayment(req)
 	}
 	return e.createAPIPayment(ctx, req)
