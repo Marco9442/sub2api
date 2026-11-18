@@ -24,7 +24,7 @@
         </div>
       </header>
 
-      <DisplayGroupPanel :reload-token="layoutReloadToken" @loaded="displayGroups = $event" />
+      <DisplayGroupPanel :reload-token="layoutReloadToken" @loaded="displayGroups = $event" @changed="reload" />
 
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 

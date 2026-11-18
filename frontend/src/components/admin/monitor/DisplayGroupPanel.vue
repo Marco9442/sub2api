@@ -17,7 +17,7 @@
         class="input max-w-xs"
         :placeholder="t('admin.channelMonitor.displayGroups.namePlaceholder')"
       />
-      <button type="submit" class="btn btn-secondary btn-sm" :disabled="busy || !newName.trim()">
+      <button type="submit" class="btn btn-secondary btn-sm" :disabled="layoutLocked || !newName.trim()">
         {{ t('common.add') }}
       </button>
     </form>
@@ -35,16 +35,16 @@
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="section.group">
             <input v-model="renameName[section.group.id]" type="text" class="input max-w-xs" />
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="busy" @click="rename(section.group)">
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked" @click="rename(section.group)">
               {{ t('admin.channelMonitor.displayGroups.rename') }}
             </button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="busy || section.groupIndex === 0" :aria-label="t('admin.channelMonitor.displayGroups.moveUp')" @click="moveGroup(section.groupIndex, -1)">
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || section.groupIndex === 0" :aria-label="t('admin.channelMonitor.displayGroups.moveUp')" @click="moveGroup(section.groupIndex, -1)">
               <Icon name="chevronUp" size="sm" />
             </button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="busy || section.groupIndex === draft.groups.length - 1" :aria-label="t('admin.channelMonitor.displayGroups.moveDown')" @click="moveGroup(section.groupIndex, 1)">
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || section.groupIndex === draft.groups.length - 1" :aria-label="t('admin.channelMonitor.displayGroups.moveDown')" @click="moveGroup(section.groupIndex, 1)">
               <Icon name="chevronDown" size="sm" />
             </button>
-            <button type="button" class="btn btn-secondary btn-sm text-red-600" :disabled="busy" @click="askDelete(section.group)">
+            <button type="button" class="btn btn-secondary btn-sm text-red-600" :disabled="layoutLocked" @click="askDelete(section.group)">
               {{ t('common.delete') }}
             </button>
             <span v-if="disabledOnly(section.monitorIds)" class="text-xs text-gray-500">
@@ -59,13 +59,13 @@
             <span :class="monitorOf(id)?.enabled ? 'text-gray-900 dark:text-white' : 'text-gray-400'">
               {{ monitorOf(id)?.name || id }}
             </span>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="index === 0" :aria-label="t('admin.channelMonitor.displayGroups.moveUp')" @click="moveMonitor(section, index, -1)">
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || index === 0" :aria-label="t('admin.channelMonitor.displayGroups.moveUp')" @click="moveMonitor(section, index, -1)">
               <Icon name="chevronUp" size="xs" />
             </button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="index === section.monitorIds.length - 1" :aria-label="t('admin.channelMonitor.displayGroups.moveDown')" @click="moveMonitor(section, index, 1)">
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || index === section.monitorIds.length - 1" :aria-label="t('admin.channelMonitor.displayGroups.moveDown')" @click="moveMonitor(section, index, 1)">
               <Icon name="chevronDown" size="xs" />
             </button>
-            <select class="input max-w-xs py-1" :value="locationKey(id)" @change="onRelocateEvent(id, $event)">
+            <select class="input max-w-xs py-1" :disabled="layoutLocked" :value="locationKey(id)" @change="onRelocateEvent(id, $event)">
               <option v-if="section.orphan" :value="section.key">{{ section.title }}</option>
               <option value="ungrouped">{{ t('channelStatus.groups.ungrouped') }}</option>
               <option v-for="group in draft.groups" :key="group.id" :value="`group:${group.id}`">{{ group.name }}</option>
@@ -75,6 +75,16 @@
       </article>
     </div>
 
+    <ConfirmDialog
+      :show="showDiscard"
+      :title="t('admin.channelMonitor.displayGroups.discardTitle')"
+      :message="t('admin.channelMonitor.displayGroups.discardMessage')"
+      :confirm-text="t('admin.channelMonitor.displayGroups.discardAction')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmDiscard"
+      @cancel="cancelDiscard"
+    />
     <ConfirmDialog
       :show="showDelete"
       :title="t('common.delete')"
@@ -111,6 +121,7 @@ import {
 const props = defineProps<{ reloadToken?: number }>()
 const emit = defineEmits<{
   loaded: [groups: ChannelMonitorDisplayGroupView[]]
+  changed: []
 }>()
 
 const { t } = useI18n()
@@ -122,9 +133,17 @@ const newName = ref('')
 const dirty = ref(false)
 const busy = ref(false)
 const showDelete = ref(false)
+const showDiscard = ref(false)
 const deleteTarget = ref<DisplayDraftGroup | null>(null)
+const pendingAction = ref<PendingAction | null>(null)
 
-const canSave = computed(() => dirty.value && orphanCount(draft.value) === 0 && !busy.value)
+const layoutLocked = computed(() => busy.value || showDiscard.value || showDelete.value)
+const canSave = computed(() => dirty.value && orphanCount(draft.value) === 0 && !layoutLocked.value)
+
+type PendingAction =
+  | { kind: 'create' }
+  | { kind: 'rename'; group: DisplayDraftGroup }
+  | { kind: 'delete'; group: DisplayDraftGroup }
 
 interface PanelSection {
   key: string
@@ -249,7 +268,7 @@ async function runMutation(work: () => Promise<void>, successKey: string) {
   try {
     await work()
     appStore.showSuccess(t(successKey))
-    busy.value = false
+    emit('changed')
     await load()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.displayGroups.saveFailed')))
@@ -257,27 +276,73 @@ async function runMutation(work: () => Promise<void>, successKey: string) {
   }
 }
 
-async function createGroup() {
-  const name = newName.value.trim()
-  if (!name || busy.value) return
-  await runMutation(async () => {
-    await adminAPI.channelMonitor.createDisplayGroup(name)
-    newName.value = ''
-  }, 'admin.channelMonitor.displayGroups.created')
+function askProceed(action: PendingAction) {
+  if (layoutLocked.value) return
+  if (dirty.value) {
+    pendingAction.value = action
+    showDiscard.value = true
+    return
+  }
+  if (action.kind === 'delete') {
+    openDelete(action.group)
+    return
+  }
+  void proceed(action)
 }
 
-async function rename(group: DisplayDraftGroup) {
-  const name = (renameName.value[group.id] ?? '').trim()
-  if (!name || name === group.name || busy.value) return
+function cancelDiscard() {
+  showDiscard.value = false
+  pendingAction.value = null
+}
+
+function confirmDiscard() {
+  const action = pendingAction.value
+  showDiscard.value = false
+  pendingAction.value = null
+  if (!action) return
+  if (action.kind === 'delete') {
+    openDelete(action.group)
+    return
+  }
+  void proceed(action)
+}
+
+function openDelete(group: DisplayDraftGroup) {
+  deleteTarget.value = group
+  showDelete.value = true
+}
+
+async function proceed(action: Exclude<PendingAction, { kind: 'delete' }>) {
+  if (action.kind === 'create') {
+    const name = newName.value.trim()
+    if (!name) return
+    await runMutation(async () => {
+      await adminAPI.channelMonitor.createDisplayGroup(name)
+      newName.value = ''
+    }, 'admin.channelMonitor.displayGroups.created')
+    return
+  }
+  const name = (renameName.value[action.group.id] ?? '').trim()
+  if (!name || name === action.group.name) return
   await runMutation(
-    () => adminAPI.channelMonitor.renameDisplayGroup(group.id, name),
+    () => adminAPI.channelMonitor.renameDisplayGroup(action.group.id, name),
     'admin.channelMonitor.displayGroups.renamed',
   )
 }
 
+async function createGroup() {
+  if (!newName.value.trim()) return
+  askProceed({ kind: 'create' })
+}
+
+async function rename(group: DisplayDraftGroup) {
+  const name = (renameName.value[group.id] ?? '').trim()
+  if (!name || name === group.name) return
+  askProceed({ kind: 'rename', group })
+}
+
 function askDelete(group: DisplayDraftGroup) {
-  deleteTarget.value = group
-  showDelete.value = true
+  askProceed({ kind: 'delete', group })
 }
 
 async function confirmDelete() {

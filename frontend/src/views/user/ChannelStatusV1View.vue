@@ -23,11 +23,13 @@
     />
     <div v-else class="space-y-6">
       <section v-for="section in grouped.sections" :key="section.key" class="space-y-3">
-        <div class="flex items-center gap-2">
-          <ProviderIcon v-if="section.provider" :provider="section.provider" :size="20" />
-          <Icon v-else name="grid" size="sm" />
-          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ section.title }}</h2>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('channelStatus.groups.count', { n: section.items.length }) }}</span>
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="inline-flex shrink-0">
+            <ProviderIcon v-if="section.provider" :provider="section.provider" :size="20" />
+            <Icon v-else name="grid" size="sm" />
+          </span>
+          <h2 class="min-w-0 break-words text-sm font-semibold text-gray-900 dark:text-white">{{ section.title }}</h2>
+          <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('channelStatus.groups.count', { n: section.items.length }) }}</span>
         </div>
         <MonitorCardGrid
           :items="section.items"
