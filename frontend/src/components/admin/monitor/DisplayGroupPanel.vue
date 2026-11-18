@@ -25,6 +25,12 @@
     <p v-if="orphanCount(draft) > 0" class="mt-3 text-xs text-amber-600 dark:text-amber-400">
       {{ t('admin.channelMonitor.displayGroups.orphanBlocked') }}
     </p>
+    <p v-if="loadFailed" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-red-600 dark:text-red-400">
+      <span>{{ t('admin.channelMonitor.displayGroups.loadFailed') }}</span>
+      <button type="button" class="btn btn-secondary btn-sm display-group-retry" :disabled="reading || writing" @click="load">
+        {{ t('admin.channelMonitor.displayGroups.loadRetry') }}
+      </button>
+    </p>
 
     <div class="mt-4 space-y-3">
       <article
@@ -75,6 +81,7 @@
       </article>
     </div>
 
+    <!-- 监控表单也是 50。这里必须更高，否则确认被表单挡住。 -->
     <ConfirmDialog
       :show="showDiscard"
       :title="t('admin.channelMonitor.displayGroups.discardTitle')"
@@ -82,6 +89,7 @@
       :confirm-text="t('admin.channelMonitor.displayGroups.discardAction')"
       :cancel-text="t('common.cancel')"
       :danger="true"
+      :z-index="60"
       @confirm="confirmDiscard"
       @cancel="cancelDiscard"
     />
@@ -99,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { ChannelMonitorDisplayGroupView } from '@/api/admin/channelMonitor'
@@ -131,19 +139,27 @@ const monitors = ref(new Map<number, DisplayLayoutMonitor>())
 const renameName = ref<Record<number, string>>({})
 const newName = ref('')
 const dirty = ref(false)
-const busy = ref(false)
+const writing = ref(false)
+const reading = ref(false)
+const loadFailed = ref(false)
+const held = ref(false)
 const showDelete = ref(false)
 const showDiscard = ref(false)
 const deleteTarget = ref<DisplayDraftGroup | null>(null)
 const pendingAction = ref<PendingAction | null>(null)
+let loadController: AbortController | null = null
+let externalDecision: ((allowed: boolean) => void) | null = null
 
-const layoutLocked = computed(() => busy.value || showDiscard.value || showDelete.value)
+const layoutLocked = computed(() => (
+  writing.value || reading.value || showDiscard.value || showDelete.value || held.value || loadFailed.value
+))
 const canSave = computed(() => dirty.value && orphanCount(draft.value) === 0 && !layoutLocked.value)
 
 type PendingAction =
   | { kind: 'create' }
   | { kind: 'rename'; group: DisplayDraftGroup }
   | { kind: 'delete'; group: DisplayDraftGroup }
+  | { kind: 'external' }
 
 interface PanelSection {
   key: string
@@ -198,10 +214,20 @@ function locationKey(id: number) {
   return orphan ? `orphan:${orphan.name}` : 'ungrouped'
 }
 
+function isCanceled(err: unknown) {
+  const e = err as { name?: string; code?: string }
+  return e?.name === 'AbortError' || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED'
+}
+
 async function load() {
-  busy.value = true
+  loadController?.abort()
+  const ctrl = new AbortController()
+  loadController = ctrl
+  reading.value = true
+  loadFailed.value = false
   try {
-    const view = await adminAPI.channelMonitor.listDisplayGroups()
+    const view = await adminAPI.channelMonitor.listDisplayGroups({ signal: ctrl.signal })
+    if (ctrl.signal.aborted || loadController !== ctrl) return
     const normalized = {
       groups: view.groups ?? [],
       ungrouped_ids: view.ungrouped_ids ?? [],
@@ -213,9 +239,14 @@ async function load() {
     dirty.value = false
     emit('loaded', normalized.groups)
   } catch (err: unknown) {
+    if (ctrl.signal.aborted || loadController !== ctrl || isCanceled(err)) return
+    loadFailed.value = true
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.displayGroups.loadFailed')))
   } finally {
-    busy.value = false
+    if (loadController === ctrl) {
+      reading.value = false
+      loadController = null
+    }
   }
 }
 
@@ -264,7 +295,7 @@ function onRelocateEvent(id: number, event: Event) {
 }
 
 async function runMutation(work: () => Promise<void>, successKey: string) {
-  busy.value = true
+  writing.value = true
   try {
     await work()
     appStore.showSuccess(t(successKey))
@@ -272,9 +303,34 @@ async function runMutation(work: () => Promise<void>, successKey: string) {
     await load()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.displayGroups.saveFailed')))
-    busy.value = false
+  } finally {
+    writing.value = false
   }
 }
+
+function releaseExternal(allowed: boolean) {
+  const decide = externalDecision
+  externalDecision = null
+  decide?.(allowed)
+}
+
+function confirmExternalChange(): Promise<boolean> {
+  if (!dirty.value) return Promise.resolve(true)
+  if (writing.value || reading.value || showDiscard.value || showDelete.value || held.value) {
+    return Promise.resolve(false)
+  }
+  return new Promise((resolve) => {
+    externalDecision = resolve
+    pendingAction.value = { kind: 'external' }
+    showDiscard.value = true
+  })
+}
+
+function hold(value: boolean) {
+  held.value = value
+}
+
+defineExpose({ confirmExternalChange, hold })
 
 function askProceed(action: PendingAction) {
   if (layoutLocked.value) return
@@ -287,12 +343,14 @@ function askProceed(action: PendingAction) {
     openDelete(action.group)
     return
   }
+  if (action.kind === 'external') return
   void proceed(action)
 }
 
 function cancelDiscard() {
   showDiscard.value = false
   pendingAction.value = null
+  releaseExternal(false)
 }
 
 function confirmDiscard() {
@@ -300,6 +358,10 @@ function confirmDiscard() {
   showDiscard.value = false
   pendingAction.value = null
   if (!action) return
+  if (action.kind === 'external') {
+    releaseExternal(true)
+    return
+  }
   if (action.kind === 'delete') {
     openDelete(action.group)
     return
@@ -312,7 +374,7 @@ function openDelete(group: DisplayDraftGroup) {
   showDelete.value = true
 }
 
-async function proceed(action: Exclude<PendingAction, { kind: 'delete' }>) {
+async function proceed(action: { kind: 'create' } | { kind: 'rename'; group: DisplayDraftGroup }) {
   if (action.kind === 'create') {
     const name = newName.value.trim()
     if (!name) return
@@ -369,4 +431,8 @@ async function save() {
 
 watch(() => props.reloadToken, () => { void load() })
 onMounted(() => { void load() })
+onUnmounted(() => {
+  loadController?.abort()
+  releaseExternal(false)
+})
 </script>

@@ -420,8 +420,10 @@ export interface ChannelMonitorDisplayLayoutPayload {
   ungrouped_ids: number[]
 }
 
-export async function listDisplayGroups(): Promise<ChannelMonitorDisplayAdminView> {
-  const { data } = await apiClient.get<ChannelMonitorDisplayAdminView>('/admin/channel-monitors/display-groups')
+export async function listDisplayGroups(options?: { signal?: AbortSignal }): Promise<ChannelMonitorDisplayAdminView> {
+  const { data } = await apiClient.get<ChannelMonitorDisplayAdminView>('/admin/channel-monitors/display-groups', {
+    signal: options?.signal,
+  })
   return data
 }
 

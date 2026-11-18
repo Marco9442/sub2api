@@ -574,7 +574,8 @@ export default {
         created: '展示分组已创建',
         renamed: '展示分组已重命名',
         deleted: '展示分组已删除',
-        loadFailed: '加载展示分组失败'
+        loadFailed: '加载展示分组失败',
+        loadRetry: '重试'
       },
       nameRequired: '请输入监控名称',
       primaryModelRequired: '请输入主模型',

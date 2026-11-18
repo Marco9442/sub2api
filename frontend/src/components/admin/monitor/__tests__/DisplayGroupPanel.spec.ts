@@ -38,9 +38,9 @@ function mountPanel() {
       stubs: {
         Icon: true,
         ConfirmDialog: {
-          props: ['show', 'title', 'message', 'confirmText'],
+          props: ['show', 'title', 'message', 'confirmText', 'zIndex'],
           template: `
-            <div v-if="show" class="confirm" :data-title="title">
+            <div v-if="show" class="confirm" :data-title="title" :data-z="zIndex">
               <p>{{ message }}</p>
               <button class="confirm-yes" @click="$emit('confirm')">{{ confirmText }}</button>
               <button class="confirm-no" @click="$emit('cancel')">cancel</button>
@@ -210,4 +210,89 @@ describe('DisplayGroupPanel draft protection', () => {
     expect(wrapper.emitted('changed')).toBeUndefined()
     expect(api.listDisplayGroups).toHaveBeenCalledTimes(1)
   })
+
+  it('lets a monitor change continue without asking when nothing is unsaved', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await expect(panelApi(wrapper).confirmExternalChange()).resolves.toBe(true)
+    expect(discardDialog(wrapper)).toBeUndefined()
+  })
+
+  it('asks before a monitor change discards a dirty arrangement and keeps it on cancel', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await makeDirty(wrapper)
+
+    const pending = panelApi(wrapper).confirmExternalChange()
+    await flushPromises()
+    expect(discardDialog(wrapper)?.text()).toContain('admin.channelMonitor.displayGroups.discardMessage')
+    expect(discardDialog(wrapper)?.attributes('data-z')).toBe('60')
+    await discardDialog(wrapper)!.get('.confirm-no').trigger('click')
+
+    await expect(pending).resolves.toBe(false)
+    expect(api.createDisplayGroup).not.toHaveBeenCalled()
+    expect(wrapper.get('button.btn-primary').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text().indexOf('beta')).toBeLessThan(wrapper.text().indexOf('alpha'))
+  })
+
+  it('allows the monitor change after the draft is explicitly discarded', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await makeDirty(wrapper)
+
+    const pending = panelApi(wrapper).confirmExternalChange()
+    await flushPromises()
+    await discardDialog(wrapper)!.get('.confirm-yes').trigger('click')
+
+    await expect(pending).resolves.toBe(true)
+    expect(api.createDisplayGroup).not.toHaveBeenCalled()
+    expect(wrapper.get('button.btn-primary').attributes('disabled')).toBeUndefined()
+  })
+
+  it('keeps the old arrangement locked when the follow-up read fails', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    api.listDisplayGroups.mockRejectedValueOnce(new Error('read failed'))
+    await submitCreate(wrapper)
+    await flushPromises()
+
+    expect(wrapper.get('select').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('admin.channelMonitor.displayGroups.loadRetry')
+
+    api.listDisplayGroups.mockResolvedValueOnce({
+      ...view,
+      groups: [{ id: 1, name: 'OpenAI', sort_order: 0, monitor_ids: [11, 10] }],
+    })
+    await wrapper.get('.display-group-retry').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text().indexOf('beta')).toBeLessThan(wrapper.text().indexOf('alpha'))
+    expect(wrapper.get('select').attributes('disabled')).toBeUndefined()
+  })
+
+  it('ignores an older read that arrives after a newer one', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    let releaseOld: (value: typeof view) => void = () => {}
+    api.listDisplayGroups.mockImplementationOnce(() => new Promise((resolve) => { releaseOld = resolve }))
+    await wrapper.setProps({ reloadToken: 1 })
+    await flushPromises()
+
+    api.listDisplayGroups.mockResolvedValueOnce({
+      ...view,
+      groups: [{ id: 1, name: 'OpenAI', sort_order: 0, monitor_ids: [11, 10] }],
+    })
+    await wrapper.setProps({ reloadToken: 2 })
+    await flushPromises()
+    expect(wrapper.text().indexOf('beta')).toBeLessThan(wrapper.text().indexOf('alpha'))
+
+    releaseOld(view)
+    await flushPromises()
+    expect(wrapper.text().indexOf('beta')).toBeLessThan(wrapper.text().indexOf('alpha'))
+  })
 })
+
+function panelApi(wrapper: ReturnType<typeof mountPanel>) {
+  return wrapper.vm as unknown as { confirmExternalChange: () => Promise<boolean> }
+}

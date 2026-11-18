@@ -574,7 +574,8 @@ export default {
         created: 'Display group created',
         renamed: 'Display group renamed',
         deleted: 'Display group deleted',
-        loadFailed: 'Failed to load display groups'
+        loadFailed: 'Failed to load display groups',
+        loadRetry: 'Retry'
       },
       nameRequired: 'Please enter a monitor name',
       primaryModelRequired: 'Please enter a primary model',

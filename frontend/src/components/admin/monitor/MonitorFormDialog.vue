@@ -312,6 +312,7 @@ const props = defineProps<{
   monitor: ChannelMonitor | null
   allowCustomOverride?: boolean
   groups?: { id: number; name: string }[]
+  beforeWrite?: () => boolean | Promise<boolean>
 }>()
 
 const emit = defineEmits<{
@@ -887,6 +888,7 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    if (props.beforeWrite && !(await props.beforeWrite())) return
     const target = editing.value
     if (target) {
       const payload = buildPayload()

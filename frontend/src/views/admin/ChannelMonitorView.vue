@@ -24,7 +24,12 @@
         </div>
       </header>
 
-      <DisplayGroupPanel :reload-token="layoutReloadToken" @loaded="displayGroups = $event" @changed="reload" />
+      <DisplayGroupPanel
+        ref="displayGroupPanel"
+        :reload-token="layoutReloadToken"
+        @loaded="displayGroups = $event"
+        @changed="reload"
+      />
 
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 
@@ -131,6 +136,7 @@
       :monitor="editing"
       :allow-custom-override="previewMode === 'custom'"
       :groups="displayGroups"
+      :before-write="confirmLayoutDiscard"
       @close="closeDialog"
       @saved="onMonitorSaved"
     />
@@ -155,13 +161,13 @@
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="confirmDelete"
-      @cancel="showDeleteDialog = false"
+      @cancel="cancelMonitorDelete"
     />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -222,6 +228,10 @@ const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total:
 
 const showDialog = ref(false)
 const displayGroups = ref<ChannelMonitorDisplayGroupView[]>([])
+const displayGroupPanel = ref<{
+  confirmExternalChange?: () => Promise<boolean>
+  hold?: (held: boolean) => void
+} | null>(null)
 const layoutReloadToken = ref(0)
 const showTemplateManager = ref(false)
 const editing = ref<ChannelMonitor | null>(null)
@@ -249,7 +259,17 @@ const deleteConfirmMessage = computed(() => {
   return t('admin.channelMonitor.deleteConfirm', { name })
 })
 
+function clampedPage(page: number, total: number, pageSize: number): number {
+  if (total <= 0 || pageSize <= 0 || page <= 1) return page
+  const last = Math.ceil(total / pageSize)
+  return page > last ? last : page
+}
+
 async function reload() {
+  await loadMonitorPage(false)
+}
+
+async function loadMonitorPage(pageAdjusted: boolean) {
   if (abortController) abortController.abort()
   const ctrl = new AbortController()
   abortController = ctrl
@@ -266,6 +286,11 @@ async function reload() {
 
     const res = await adminAPI.channelMonitor.list(params, { signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
+    const nextPage = clampedPage(pagination.page, res.total, pagination.page_size)
+    if (!pageAdjusted && nextPage !== pagination.page) {
+      pagination.page = nextPage
+      return loadMonitorPage(true)
+    }
     monitors.value = res.items || []
     pagination.total = res.total
   } catch (err: unknown) {
@@ -318,19 +343,47 @@ function refreshDisplayGroups() {
   layoutReloadToken.value += 1
 }
 
+function confirmLayoutDiscard(): boolean | Promise<boolean> {
+  const ask = displayGroupPanel.value?.confirmExternalChange
+  if (!ask) return true
+  return ask()
+}
+
+function beginMonitorWrite(): boolean | Promise<boolean> {
+  const panel = displayGroupPanel.value
+  const ask = panel?.confirmExternalChange
+  if (!ask) {
+    panel?.hold?.(true)
+    return true
+  }
+  return ask().then((ok) => {
+    if (ok) panel.hold?.(true)
+    return ok
+  })
+}
+
+function endMonitorWrite() {
+  displayGroupPanel.value?.hold?.(false)
+}
+
 function onMonitorSaved() {
   refreshDisplayGroups()
   reload()
 }
 
 async function toggleEnabled(row: ChannelMonitor) {
+  const allowed = beginMonitorWrite()
+  if (allowed !== true && !(await allowed)) return
   const next = !row.enabled
   try {
     await adminAPI.channelMonitor.update(row.id, { enabled: next })
     row.enabled = next
     refreshDisplayGroups()
+    await nextTick()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    endMonitorWrite()
   }
 }
 
@@ -361,23 +414,36 @@ async function handleDuplicate(row: ChannelMonitor) {
     return
   }
   if (duplicatingIds.has(row.id)) return
+  const allowed = beginMonitorWrite()
+  if (allowed !== true && !(await allowed)) return
+  if (duplicatingIds.has(row.id)) return
 
   duplicatingIds.add(row.id)
   try {
     const duplicate = await adminAPI.channelMonitor.duplicate(row.id)
     appStore.showSuccess(t('admin.channelMonitor.duplicateSuccess', { name: duplicate.name }))
     refreshDisplayGroups()
+    await nextTick()
     await reload()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.duplicateFailed')))
   } finally {
     duplicatingIds.delete(row.id)
+    endMonitorWrite()
   }
 }
 
-function handleDelete(row: ChannelMonitor) {
+async function handleDelete(row: ChannelMonitor) {
+  const allowed = beginMonitorWrite()
+  if (allowed !== true && !(await allowed)) return
   deleting.value = row
   showDeleteDialog.value = true
+}
+
+function cancelMonitorDelete() {
+  showDeleteDialog.value = false
+  deleting.value = null
+  endMonitorWrite()
 }
 
 async function confirmDelete() {
@@ -388,9 +454,12 @@ async function confirmDelete() {
     refreshDisplayGroups()
     showDeleteDialog.value = false
     deleting.value = null
+    await nextTick()
     reload()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    endMonitorWrite()
   }
 }
 
