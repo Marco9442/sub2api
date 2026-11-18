@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,6 +80,46 @@ func TestResolveChainPublicIPv6WithoutPreviousHopIsClient(t *testing.T) {
 		require.Equal(t, "2600:3c18::1", got.ClientIP, xff)
 		require.Equal(t, SourceClient, got.Source)
 		require.NotEmpty(t, got.ClientIP)
+	}
+}
+
+func TestResolveChainInvalidRawHopIsBroken(t *testing.T) {
+	list := testList(t, []string{"198.51.100.0/24"}, nil, time.Minute)
+	broken := []ChainInput{
+		{
+			Peer: PeerTunnel, PeerName: "baima-edge",
+			ConnectingIP: "198.51.100.8",
+			ForwardedFor: "203.0.113.10, not-an-ip, 198.51.100.8",
+			List:         list,
+		},
+		{
+			Peer: PeerTunnel, PeerName: "baima-edge",
+			ConnectingIP: "198.51.100.8",
+			ForwardedFor: "203.0.113.10, 198.51.100.8, not-an-ip",
+			List:         list,
+		},
+		{
+			Peer: PeerTunnel, PeerName: "baima-edge",
+			ConnectingIP: "2600:3c18::1",
+			ForwardedFor: "not-an-ip, 2600:3c18::1",
+			List:         list,
+		},
+	}
+	for _, in := range broken {
+		got := ResolveChain(in)
+		require.Empty(t, got.ClientIP, in.ForwardedFor)
+		require.Equal(t, SourceProxy, got.Source, in.ForwardedFor)
+	}
+
+	for _, xff := range []string{"", "2600:3c18::1", "2600:3c18::1, 2600:3c18::1"} {
+		got := ResolveChain(ChainInput{
+			Peer: PeerTunnel, PeerName: "baima-edge",
+			ConnectingIP: "2600:3c18::1",
+			ForwardedFor: xff,
+			List:         list,
+		})
+		require.Equal(t, "2600:3c18::1", got.ClientIP, xff)
+		require.Equal(t, SourceClient, got.Source, xff)
 	}
 }
 
@@ -380,6 +422,156 @@ func TestPeerLookupCachesFailureAndKeepsLastGood(t *testing.T) {
 	require.Equal(t, "203.0.113.10", got.ClientIP)
 	now = now.Add(peerCacheKeep)
 	require.Equal(t, SourceUnknown, e.identify("172.18.0.5:1", "203.0.113.10", "").Source)
+}
+
+func TestSnapshotClockIsPrivate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "list.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+		"fetched_at": "2026-11-18T00:00:00Z",
+		"ipv4": ["198.51.100.0/24"],
+		"ipv6": []
+	}`), 0o644))
+	now := time.Date(2026, 11, 18, 1, 0, 0, 0, time.UTC)
+	e := &Entrance{EgressFile: path, Now: func() time.Time { return now }}
+	first := e.snapshot()
+	require.True(t, first.TrustIPv4())
+	now = now.Add(25 * time.Hour)
+	second := e.snapshot()
+	require.NotSame(t, first, second)
+	require.True(t, first.TrustIPv4())
+	require.False(t, second.TrustIPv4())
+}
+
+func TestSnapshotConcurrentFreshness(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "list.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+		"fetched_at": "2026-11-18T00:00:00Z",
+		"ipv4": ["198.51.100.0/24"],
+		"ipv6": []
+	}`), 0o644))
+	now := time.Date(2026, 11, 18, 1, 0, 0, 0, time.UTC)
+	e := &Entrance{EgressFile: path, Now: func() time.Time { return now }}
+	require.NotNil(t, e.snapshot())
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 40 {
+				list := e.snapshot()
+				if list == nil || !list.TrustIPv4() {
+					t.Errorf("shared list clock changed freshness")
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestPeerLookupRefreshesMismatchOnce(t *testing.T) {
+	now := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	calls := 0
+	remote := "172.18.0.5"
+	e := &Entrance{
+		TunnelPeer: "baima-edge",
+		Now:        func() time.Time { return now },
+		Resolve: func(string) ([]string, error) {
+			calls++
+			return []string{remote}, nil
+		},
+		List: testList(t, []string{"198.51.100.0/24"}, nil, time.Hour),
+	}
+	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
+	require.Equal(t, 1, calls)
+
+	remote = "172.18.0.9"
+	now = now.Add(5 * time.Second)
+	got := e.identify("172.18.0.9:1", "203.0.113.10", "")
+	require.Equal(t, "203.0.113.10", got.ClientIP)
+	require.Equal(t, SourceClient, got.Source)
+	require.Equal(t, 2, calls)
+
+	now = now.Add(5 * time.Second)
+	got = e.identify("172.18.0.8:1", "203.0.113.10", "")
+	require.Equal(t, SourceUnknown, got.Source)
+	require.Empty(t, got.ClientIP)
+	require.Equal(t, 2, calls)
+}
+
+func TestPeerLookupCoalescesMismatchRefresh(t *testing.T) {
+	now := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	var calls atomic.Int32
+	entered := make(chan struct{}, 2)
+	gate := make(chan struct{})
+	e := &Entrance{
+		TunnelPeer: "baima-edge",
+		Now:        func() time.Time { return now },
+		Resolve: func(string) ([]string, error) {
+			n := calls.Add(1)
+			if n == 1 {
+				return []string{"172.18.0.5"}, nil
+			}
+			entered <- struct{}{}
+			<-gate
+			return []string{"172.18.0.9"}, nil
+		},
+		List: testList(t, []string{"198.51.100.0/24"}, nil, time.Hour),
+	}
+	require.Equal(t, SourceClient, e.identify("172.18.0.5:1", "203.0.113.10", "").Source)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		e.identify("172.18.0.9:1", "203.0.113.10", "")
+	}()
+	go func() {
+		defer wg.Done()
+		e.identify("172.18.0.9:1", "203.0.113.10", "")
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("mismatch did not refresh")
+	}
+	select {
+	case <-entered:
+		t.Fatal("mismatch refresh was not shared")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(gate)
+	wg.Wait()
+	require.Equal(t, int32(2), calls.Load())
+}
+
+func TestPeerLookupFailureBumpsCacheClock(t *testing.T) {
+	now := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	calls := 0
+	fail := false
+	e := &Entrance{
+		TunnelPeer: "baima-edge",
+		Now:        func() time.Time { return now },
+		Resolve: func(string) ([]string, error) {
+			calls++
+			if fail {
+				return nil, errors.New("dns down")
+			}
+			return []string{"172.18.0.5"}, nil
+		},
+		List: testList(t, []string{"198.51.100.0/24"}, nil, time.Hour),
+	}
+	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
+	fail = true
+	now = now.Add(31 * time.Second)
+	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
+	afterFail := calls
+	now = now.Add(5 * time.Second)
+	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
+	require.Equal(t, SourceUnknown, e.identify("172.18.0.9:1", "203.0.113.10", "").Source)
+	require.Equal(t, afterFail, calls)
 }
 
 func testList(t *testing.T, v4, v6 []string, maxAge time.Duration) *EgressList {

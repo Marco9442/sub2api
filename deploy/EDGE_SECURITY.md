@@ -180,16 +180,19 @@ above.
 
 The resolver compares `RemoteAddr` with those names. It checks the mesh name
 first. Names are cached for 30 seconds and the last successful result is kept
-for 5 minutes. A peer that has never resolved is unknown. Unknown peers and
-the mesh peer ignore forwarding headers.
+for 5 minutes. A cached address that does not match the connection is refreshed
+once inside those 30 seconds. A failed lookup keeps the last success for 5
+minutes and waits 30 seconds before asking again. A peer that has never
+resolved is unknown. Unknown peers and the mesh peer ignore forwarding headers.
 
 For the tunnel peer, `CF-Connecting-IP` is the address that connected to the
 edge. It is the client when it is not an origin egress. It is also the client
 when `X-Forwarded-For` has no distinct address to its left, including a normal
 public IPv6 request that arrives without a previous hop. A left hop is the
-client only when the last hop equals `CF-Connecting-IP` and that left hop is
-public. A last-hop mismatch or a non-public left hop is a known proxy with no
-verified client.
+client only when the last raw hop equals `CF-Connecting-IP` and that left raw
+hop is public. A last-hop mismatch, an unparseable token in either of the last
+two raw positions, or a non-public left hop is a known proxy with no verified
+client. A missing chain still uses the connecting address.
 
 IPv4 egress ranges come from `SECURITY_ENTRANCE_EGRESS_FILE`. The file is JSON
 with `fetched_at`, `ipv4`, and `ipv6`. A missing, empty, stale, or unreadable

@@ -124,37 +124,39 @@ func possibleEgress(connecting netip.Addr, list *EgressList) bool {
 }
 
 func resolveEgressChain(proxy Identity, connecting netip.Addr, forwardedFor string) Identity {
-	hops := parseHops(forwardedFor)
-	if len(hops) == 0 {
-		return Identity{ClientIP: connecting.String(), Source: SourceClient, PeerName: proxy.PeerName}
+	parts := rawHops(forwardedFor)
+	if len(parts) == 0 {
+		return connectingClient(proxy, connecting)
 	}
-	last := hops[len(hops)-1]
-	if last != connecting {
+	last, ok := canonicalAddr(parts[len(parts)-1])
+	if !ok || last != connecting {
 		return proxy
 	}
-	if len(hops) == 1 || hops[len(hops)-2] == connecting {
-		return Identity{ClientIP: connecting.String(), Source: SourceClient, PeerName: proxy.PeerName}
+	if len(parts) == 1 {
+		return connectingClient(proxy, connecting)
 	}
-	left := hops[len(hops)-2]
+	left, ok := canonicalAddr(parts[len(parts)-2])
+	if !ok {
+		return proxy
+	}
+	if left == connecting {
+		return connectingClient(proxy, connecting)
+	}
 	if !isPublicAddr(left) {
 		return proxy
 	}
 	return Identity{ClientIP: left.String(), Source: SourceClient, PeerName: proxy.PeerName}
 }
 
-func parseHops(forwardedFor string) []netip.Addr {
+func connectingClient(proxy Identity, connecting netip.Addr) Identity {
+	return Identity{ClientIP: connecting.String(), Source: SourceClient, PeerName: proxy.PeerName}
+}
+
+func rawHops(forwardedFor string) []string {
 	if strings.TrimSpace(forwardedFor) == "" {
 		return nil
 	}
-	parts := strings.Split(forwardedFor, ",")
-	hops := make([]netip.Addr, 0, len(parts))
-	for _, part := range parts {
-		addr, ok := canonicalAddr(part)
-		if ok {
-			hops = append(hops, addr)
-		}
-	}
-	return hops
+	return strings.Split(forwardedFor, ",")
 }
 
 func canonicalAddr(raw string) (netip.Addr, bool) {
@@ -245,6 +247,16 @@ func (l *EgressList) fresh() bool {
 	return !now.After(l.FetchedAt.Add(maxAge))
 }
 
+// withNow returns a request-local copy. Prefix slices stay shared and must not be mutated.
+func (l *EgressList) withNow(now time.Time) *EgressList {
+	if l == nil {
+		return nil
+	}
+	next := *l
+	next.Now = now
+	return &next
+}
+
 // TrustIPv4 reports whether IPv4 origin ranges may be used.
 func (l *EgressList) TrustIPv4() bool {
 	return l.fresh() && len(l.v4) > 0
@@ -304,15 +316,23 @@ type Entrance struct {
 	Now        func() time.Time
 	List       *EgressList
 
-	mu    sync.Mutex
-	peers map[string]peerCache
-	file  fileCache
+	mu      sync.Mutex
+	peers   map[string]peerCache
+	flights map[string]*peerCall
+	file    fileCache
 }
 
 type peerCache struct {
-	at  time.Time
-	ips []netip.Addr
-	ok  bool
+	at       time.Time
+	ips      []netip.Addr
+	ok       bool
+	mismatch bool
+}
+
+type peerCall struct {
+	done chan struct{}
+	ips  []netip.Addr
+	err  error
 }
 
 type fileCache struct {
@@ -369,10 +389,22 @@ func (e *Entrance) match(name string, addr netip.Addr) bool {
 	if name == "" {
 		return false
 	}
-	ips, err := e.lookup(name)
-	if err != nil {
+	ips, fromCache, err := e.lookup(name)
+	if err == nil && containsAddr(ips, addr) {
+		return true
+	}
+	if err != nil || !fromCache {
 		return false
 	}
+	if !e.allowMismatchRefresh(name) {
+		ips, _, err = e.lookup(name)
+		return err == nil && containsAddr(ips, addr)
+	}
+	ips, err = e.resolveInto(name, true)
+	return err == nil && containsAddr(ips, addr)
+}
+
+func containsAddr(ips []netip.Addr, addr netip.Addr) bool {
 	for _, ip := range ips {
 		if ip == addr {
 			return true
@@ -381,44 +413,93 @@ func (e *Entrance) match(name string, addr netip.Addr) bool {
 	return false
 }
 
-func (e *Entrance) lookup(name string) ([]netip.Addr, error) {
+func (e *Entrance) lookup(name string) ([]netip.Addr, bool, error) {
 	now := e.now()
 	e.mu.Lock()
 	cached, hit := e.peers[name]
 	e.mu.Unlock()
 	if hit && now.Sub(cached.at) < peerCacheTTL {
 		if cached.ok {
-			return cached.ips, nil
+			return cached.ips, true, nil
 		}
-		return nil, errors.New("entrance peer lookup failed recently")
+		return nil, true, errors.New("entrance peer lookup failed recently")
+	}
+	ips, err := e.resolveInto(name, false)
+	return ips, false, err
+}
+
+func (e *Entrance) allowMismatchRefresh(name string) bool {
+	now := e.now()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	cached, hit := e.peers[name]
+	if !hit || !cached.ok {
+		return false
+	}
+	if now.Sub(cached.at) >= peerCacheTTL {
+		return true
+	}
+	return !cached.mismatch
+}
+
+func (e *Entrance) resolveInto(name string, mismatch bool) ([]netip.Addr, error) {
+	call, leader := e.startFlight(name)
+	if !leader {
+		<-call.done
+		return call.ips, call.err
 	}
 	raw, err := e.resolve(name)
-	ips := make([]netip.Addr, 0, len(raw))
-	if err == nil {
-		for _, item := range raw {
-			addr, ok := canonicalAddr(item)
-			if ok {
-				ips = append(ips, addr)
-			}
-		}
-	}
+	ips := parseResolved(raw)
+	now := e.now()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.peers == nil {
 		e.peers = map[string]peerCache{}
 	}
+	cached, hit := e.peers[name]
 	if err != nil || len(ips) == 0 {
 		if hit && cached.ok && now.Sub(cached.at) < peerCacheKeep {
-			return cached.ips, nil
+			e.peers[name] = peerCache{at: now, ips: cached.ips, ok: true, mismatch: true}
+			call.ips = cached.ips
+		} else {
+			e.peers[name] = peerCache{at: now, ok: false, mismatch: mismatch}
+			if err == nil {
+				err = errors.New("entrance peer resolved no addresses")
+			}
+			call.err = err
 		}
-		e.peers[name] = peerCache{at: now, ok: false}
-		if err == nil {
-			err = errors.New("entrance peer resolved no addresses")
-		}
-		return nil, err
+	} else {
+		e.peers[name] = peerCache{at: now, ips: ips, ok: true, mismatch: mismatch}
+		call.ips = ips
 	}
-	e.peers[name] = peerCache{at: now, ips: ips, ok: true}
-	return ips, nil
+	delete(e.flights, name)
+	close(call.done)
+	return call.ips, call.err
+}
+
+func parseResolved(raw []string) []netip.Addr {
+	ips := make([]netip.Addr, 0, len(raw))
+	for _, item := range raw {
+		addr, ok := canonicalAddr(item)
+		if ok {
+			ips = append(ips, addr)
+		}
+	}
+	return ips
+}
+
+func (e *Entrance) startFlight(name string) (*peerCall, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.flights == nil {
+		e.flights = map[string]*peerCall{}
+	}
+	if call, ok := e.flights[name]; ok {
+		return call, false
+	}
+	call := &peerCall{done: make(chan struct{})}
+	e.flights[name] = call
+	return call, true
 }
 
 func (e *Entrance) resolve(name string) ([]string, error) {
@@ -453,21 +534,20 @@ func (e *Entrance) snapshot() *EgressList {
 		return nil
 	}
 	if e.file.ok && e.file.list != nil && e.file.mod.Equal(info.ModTime()) {
-		e.file.list.Now = now
-		return e.file.list
+		return e.file.list.withNow(now)
 	}
 	parsed, parseErr := ParseEgressFile(e.EgressFile, now, e.maxAge())
 	if parseErr != nil {
 		if e.file.ok && e.file.list != nil {
-			e.file.list.Now = now
-			if e.file.list.fresh() {
-				return e.file.list
+			copy := e.file.list.withNow(now)
+			if copy.fresh() {
+				return copy
 			}
 		}
 		return nil
 	}
 	e.file = fileCache{mod: info.ModTime(), list: parsed, ok: true}
-	return parsed
+	return parsed.withNow(now)
 }
 
 var entranceState atomic.Pointer[Entrance]
