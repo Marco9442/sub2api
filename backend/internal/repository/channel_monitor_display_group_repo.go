@@ -19,7 +19,7 @@ func (r *channelMonitorRepository) ListDisplayGroups(ctx context.Context) ([]ser
 	if err != nil {
 		return nil, fmt.Errorf("list display groups: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]service.ChannelMonitorDisplayGroup, 0)
 	for rows.Next() {
@@ -44,7 +44,7 @@ func (r *channelMonitorRepository) ListDisplayMemberships(ctx context.Context) (
 	if err != nil {
 		return nil, fmt.Errorf("list display memberships: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]service.ChannelMonitorDisplayMembership, 0)
 	for rows.Next() {
