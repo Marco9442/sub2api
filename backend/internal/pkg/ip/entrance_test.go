@@ -566,12 +566,71 @@ func TestPeerLookupFailureBumpsCacheClock(t *testing.T) {
 	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
 	fail = true
 	now = now.Add(31 * time.Second)
+	require.Equal(t, SourceUnknown, e.identify("172.18.0.9:1", "203.0.113.10", "").Source)
 	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
 	afterFail := calls
 	now = now.Add(5 * time.Second)
 	require.Equal(t, "203.0.113.10", e.identify("172.18.0.5:1", "203.0.113.10", "").ClientIP)
-	require.Equal(t, SourceUnknown, e.identify("172.18.0.9:1", "203.0.113.10", "").Source)
+	require.Equal(t, SourceUnknown, e.identify("172.18.0.8:1", "203.0.113.10", "").Source)
 	require.Equal(t, afterFail, calls)
+}
+
+func TestPeerLookupFailureDoesNotRenewTrust(t *testing.T) {
+	start := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	now := start
+	fail := false
+	e := &Entrance{
+		TunnelPeer: "baima-edge",
+		Now:        func() time.Time { return now },
+		Resolve: func(string) ([]string, error) {
+			if fail {
+				return nil, errors.New("dns down")
+			}
+			return []string{"172.18.0.5"}, nil
+		},
+		List: testList(t, []string{"198.51.100.0/24"}, nil, time.Hour),
+	}
+	require.Equal(t, SourceClient, e.identify("172.18.0.5:1", "203.0.113.10", "").Source)
+	fail = true
+	now = start.Add(4*time.Minute + 40*time.Second)
+	require.Equal(t, SourceClient, e.identify("172.18.0.5:1", "203.0.113.10", "").Source)
+	now = start.Add(5*time.Minute + 5*time.Second)
+	require.Equal(t, SourceUnknown, e.identify("172.18.0.5:1", "203.0.113.10", "").Source)
+}
+
+func TestClassifyMatchesCacheBeforeRefresh(t *testing.T) {
+	now := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	meshIP := "172.18.0.3"
+	tunnelIP := "172.18.0.5"
+	calls := map[string]int{}
+	e := &Entrance{
+		TunnelPeer: "baima-edge",
+		MeshPeer:   "baima-mesh",
+		Now:        func() time.Time { return now },
+		Resolve: func(name string) ([]string, error) {
+			calls[name]++
+			if name == "baima-mesh" {
+				return []string{meshIP}, nil
+			}
+			return []string{tunnelIP}, nil
+		},
+		List: testList(t, []string{"198.51.100.0/24"}, nil, time.Hour),
+	}
+
+	require.Equal(t, SourceClient, e.identify(tunnelIP+":1", "203.0.113.10", "").Source)
+	require.Equal(t, SourceProxy, e.identify(meshIP+":1", "203.0.113.10", "198.51.100.8, 203.0.113.10").Source)
+	meshCalls := calls["baima-mesh"]
+
+	now = now.Add(5 * time.Second)
+	require.Equal(t, SourceClient, e.identify(tunnelIP+":1", "203.0.113.10", "").Source)
+	require.Equal(t, meshCalls, calls["baima-mesh"])
+
+	meshIP = "172.18.0.4"
+	now = now.Add(5 * time.Second)
+	got := e.identify("172.18.0.4:1", "203.0.113.10", "198.51.100.8, 203.0.113.10")
+	require.Equal(t, SourceProxy, got.Source)
+	require.Equal(t, "baima-mesh", got.PeerName)
+	require.Empty(t, got.ClientIP)
 }
 
 func testList(t *testing.T, v4, v6 []string, maxAge time.Duration) *EgressList {

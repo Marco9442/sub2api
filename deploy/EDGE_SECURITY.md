@@ -178,12 +178,13 @@ Docker DNS name of the process that connects directly to Sub2API. Either name
 enables entrance resolution. Leave both unset to keep the compatibility path
 above.
 
-The resolver compares `RemoteAddr` with those names. It checks the mesh name
-first. Names are cached for 30 seconds and the last successful result is kept
-for 5 minutes. A cached address that does not match the connection is refreshed
-once inside those 30 seconds. A failed lookup keeps the last success for 5
-minutes and waits 30 seconds before asking again. A peer that has never
-resolved is unknown. Unknown peers and the mesh peer ignore forwarding headers.
+The resolver compares `RemoteAddr` with those names. It checks cached addresses
+before asking DNS again, mesh first. A refresh happens only when neither cache
+contains the address, and only once inside 30 seconds. The last successful
+result is kept for 5 minutes from that success. A failed lookup does not extend
+that period, and a cache read past it is not trusted. Failed lookups still wait
+30 seconds before asking again. A peer that has never resolved is unknown.
+Unknown peers and the mesh peer ignore forwarding headers.
 
 For the tunnel peer, `CF-Connecting-IP` is the address that connected to the
 edge. It is the client when it is not an origin egress. It is also the client

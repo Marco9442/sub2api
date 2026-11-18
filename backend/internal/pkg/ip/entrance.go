@@ -323,10 +323,15 @@ type Entrance struct {
 }
 
 type peerCache struct {
-	at       time.Time
-	ips      []netip.Addr
-	ok       bool
-	mismatch bool
+	at         time.Time
+	resolvedAt time.Time
+	ips        []netip.Addr
+	ok         bool
+	mismatch   bool
+}
+
+func (c peerCache) trusted(now time.Time) bool {
+	return c.ok && !c.resolvedAt.IsZero() && now.Sub(c.resolvedAt) < peerCacheKeep
 }
 
 type peerCall struct {
@@ -375,6 +380,9 @@ func (e *Entrance) classify(remoteAddr string) (string, string) {
 	if !ok {
 		return PeerUnknown, ""
 	}
+	if kind, name, ok := e.cachedPeer(addr); ok {
+		return kind, name
+	}
 	if e.match(e.MeshPeer, addr) {
 		return PeerMesh, e.MeshPeer
 	}
@@ -382,6 +390,28 @@ func (e *Entrance) classify(remoteAddr string) (string, string) {
 		return PeerTunnel, e.TunnelPeer
 	}
 	return PeerUnknown, ""
+}
+
+func (e *Entrance) cachedPeer(addr netip.Addr) (string, string, bool) {
+	if e.cacheHas(e.MeshPeer, addr) {
+		return PeerMesh, strings.TrimSpace(e.MeshPeer), true
+	}
+	if e.cacheHas(e.TunnelPeer, addr) {
+		return PeerTunnel, strings.TrimSpace(e.TunnelPeer), true
+	}
+	return "", "", false
+}
+
+func (e *Entrance) cacheHas(name string, addr netip.Addr) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	now := e.now()
+	e.mu.Lock()
+	cached, hit := e.peers[name]
+	e.mu.Unlock()
+	return hit && cached.trusted(now) && containsAddr(cached.ips, addr)
 }
 
 func (e *Entrance) match(name string, addr netip.Addr) bool {
@@ -419,7 +449,7 @@ func (e *Entrance) lookup(name string) ([]netip.Addr, bool, error) {
 	cached, hit := e.peers[name]
 	e.mu.Unlock()
 	if hit && now.Sub(cached.at) < peerCacheTTL {
-		if cached.ok {
+		if cached.trusted(now) {
 			return cached.ips, true, nil
 		}
 		return nil, true, errors.New("entrance peer lookup failed recently")
@@ -458,8 +488,14 @@ func (e *Entrance) resolveInto(name string, mismatch bool) ([]netip.Addr, error)
 	}
 	cached, hit := e.peers[name]
 	if err != nil || len(ips) == 0 {
-		if hit && cached.ok && now.Sub(cached.at) < peerCacheKeep {
-			e.peers[name] = peerCache{at: now, ips: cached.ips, ok: true, mismatch: true}
+		if hit && cached.trusted(now) {
+			e.peers[name] = peerCache{
+				at:         now,
+				resolvedAt: cached.resolvedAt,
+				ips:        cached.ips,
+				ok:         true,
+				mismatch:   true,
+			}
 			call.ips = cached.ips
 		} else {
 			e.peers[name] = peerCache{at: now, ok: false, mismatch: mismatch}
@@ -469,7 +505,7 @@ func (e *Entrance) resolveInto(name string, mismatch bool) ([]netip.Addr, error)
 			call.err = err
 		}
 	} else {
-		e.peers[name] = peerCache{at: now, ips: ips, ok: true, mismatch: mismatch}
+		e.peers[name] = peerCache{at: now, resolvedAt: now, ips: ips, ok: true, mismatch: mismatch}
 		call.ips = ips
 	}
 	delete(e.flights, name)
