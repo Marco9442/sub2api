@@ -30,6 +30,7 @@ export interface UserMonitorView {
   name: string
   provider: Provider
   group_name: string
+  display_sort?: number
   primary_model: string
   primary_status: MonitorStatus
   primary_latency_ms: number | null
@@ -48,8 +49,15 @@ export interface UserMonitorView {
   latest_quota?: MonitorQuotaSnapshot | null
 }
 
+export interface UserMonitorGroup {
+  id: number
+  name: string
+  sort_order: number
+}
+
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
+  groups?: UserMonitorGroup[]
   // Custom 模式下管理员配置的时间档；其他模式为空。
   windows?: { amount: number; unit: 'm' | 'd' }[]
   // Custom 模式下用户页右上角的黄、红百分比。其他模式不返回。

@@ -48,20 +48,29 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 	return out
 }
 
-// ListUserView 用户只读视图：列出所有 enabled 监控的概览。
+// ListUserView 用户只读视图：列出所有 enabled 监控的概览，并带上展示分组目录。
+// 目录在空列表短路之前读取，这样没有启用监控时分组仍然返回。
 // 使用批量聚合接口避免 N+1：
 //
+//	1 次查分组目录；
 //	1 次查 monitors；
 //	1 次批量 latest（含 ping_latency_ms）；
 //	1 次批量 7d availability；
 //	1 次批量 timeline（主模型最近 N 条）。
-func (s *ChannelMonitorService) ListUserView(ctx context.Context, windowKey string) ([]*UserMonitorView, error) {
+func (s *ChannelMonitorService) ListUserView(ctx context.Context, windowKey string) (*UserMonitorList, error) {
+	groups, err := s.repo.ListDisplayGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list display groups: %w", err)
+	}
+	if groups == nil {
+		groups = []ChannelMonitorDisplayGroup{}
+	}
 	monitors, err := s.repo.ListEnabled(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)
 	}
 	if len(monitors) == 0 {
-		return []*UserMonitorView{}, nil
+		return &UserMonitorList{Items: []*UserMonitorView{}, Groups: groups}, nil
 	}
 
 	ids, primaryByID, extrasByID := collectMonitorIndexes(monitors)
@@ -75,7 +84,8 @@ func (s *ChannelMonitorService) ListUserView(ctx context.Context, windowKey stri
 		views = append(views, buildUserViewFromSummary(m, summaries[m.ID], primaryLatest, timelineMap[m.ID]))
 	}
 	s.fillWindowAvailability(ctx, views, windowKey)
-	return views, nil
+	sortUserMonitorViews(views, groups)
+	return &UserMonitorList{Items: views, Groups: groups}, nil
 }
 
 // collectMonitorIndexes 把 monitors 列表按 ID 展开为聚合查询所需的三个索引结构。
@@ -239,6 +249,7 @@ func buildUserViewFromSummary(
 		Name:                m.Name,
 		Provider:            m.Provider,
 		GroupName:           m.GroupName,
+		DisplaySort:         m.DisplaySort,
 		PrimaryModel:        m.PrimaryModel,
 		PrimaryStatus:       summary.PrimaryStatus,
 		PrimaryLatencyMs:    summary.PrimaryLatencyMs,

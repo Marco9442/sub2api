@@ -26,7 +26,7 @@
     </div>
 
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="!hideEmpty && items.length === 0"
       :title="t('channelStatus.empty.title')"
       :description="t('channelStatus.empty.description')"
     />
@@ -62,7 +62,8 @@ const props = withDefaults(defineProps<{
   loading: boolean
   detailCache: Record<number, UserMonitorDetail>
   metric?: 'latency' | 'ttft'
-}>(), { metric: 'latency' })
+  hideEmpty?: boolean
+}>(), { metric: 'latency', hideEmpty: false })
 
 const emit = defineEmits<{
   (e: 'cardClick', item: UserMonitorView): void

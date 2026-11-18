@@ -59,6 +59,7 @@ function mountView() {
         Toggle: true,
         Icon: true,
         MonitorFormDialog: true,
+        DisplayGroupPanel: true,
         MonitorTemplateManagerDialog: true,
         MonitorRunResultDialog: true,
         MonitorPrimaryModelCell: true,

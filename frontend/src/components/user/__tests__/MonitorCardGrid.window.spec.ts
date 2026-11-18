@@ -47,6 +47,13 @@ describe('MonitorCardGrid availability', () => {
     expect(wrapper.get('[data-test="card"]').text()).toBe('')
   })
 
+  it('hides the page empty state inside a titled section', () => {
+    const wrapper = mount(MonitorCardGrid, {
+      props: { items: [], window: '7d', countdownSeconds: 0, loading: false, detailCache: {}, hideEmpty: true },
+    })
+    expect(wrapper.text()).not.toContain('channelStatus.empty.title')
+  })
+
   it('keeps the seven day value outside custom mode', () => {
     const wrapper = mountGrid('latency', item({ availability_7d: 99, window_availability: 10 }))
     expect(wrapper.get('[data-test="card"]').text()).toBe('99')

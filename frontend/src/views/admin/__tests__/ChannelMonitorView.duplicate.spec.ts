@@ -118,6 +118,7 @@ function mountView() {
         HelpTooltip: true,
         Toggle: true,
         MonitorFormDialog: true,
+        DisplayGroupPanel: true,
         MonitorTemplateManagerDialog: true,
         MonitorRunResultDialog: true,
         MonitorPrimaryModelCell: true,

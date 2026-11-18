@@ -195,6 +195,27 @@ func (_u *ChannelMonitorUpdate) ClearGroupName() *ChannelMonitorUpdate {
 	return _u
 }
 
+// SetDisplaySort sets the "display_sort" field.
+func (_u *ChannelMonitorUpdate) SetDisplaySort(v int) *ChannelMonitorUpdate {
+	_u.mutation.ResetDisplaySort()
+	_u.mutation.SetDisplaySort(v)
+	return _u
+}
+
+// SetNillableDisplaySort sets the "display_sort" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableDisplaySort(v *int) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetDisplaySort(*v)
+	}
+	return _u
+}
+
+// AddDisplaySort adds value to the "display_sort" field.
+func (_u *ChannelMonitorUpdate) AddDisplaySort(v int) *ChannelMonitorUpdate {
+	_u.mutation.AddDisplaySort(v)
+	return _u
+}
+
 // SetEnabled sets the "enabled" field.
 func (_u *ChannelMonitorUpdate) SetEnabled(v bool) *ChannelMonitorUpdate {
 	_u.mutation.SetEnabled(v)
@@ -601,6 +622,12 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.GroupNameCleared() {
 		_spec.ClearField(channelmonitor.FieldGroupName, field.TypeString)
 	}
+	if value, ok := _u.mutation.DisplaySort(); ok {
+		_spec.SetField(channelmonitor.FieldDisplaySort, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDisplaySort(); ok {
+		_spec.AddField(channelmonitor.FieldDisplaySort, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(channelmonitor.FieldEnabled, field.TypeBool, value)
 	}
@@ -939,6 +966,27 @@ func (_u *ChannelMonitorUpdateOne) SetNillableGroupName(v *string) *ChannelMonit
 // ClearGroupName clears the value of the "group_name" field.
 func (_u *ChannelMonitorUpdateOne) ClearGroupName() *ChannelMonitorUpdateOne {
 	_u.mutation.ClearGroupName()
+	return _u
+}
+
+// SetDisplaySort sets the "display_sort" field.
+func (_u *ChannelMonitorUpdateOne) SetDisplaySort(v int) *ChannelMonitorUpdateOne {
+	_u.mutation.ResetDisplaySort()
+	_u.mutation.SetDisplaySort(v)
+	return _u
+}
+
+// SetNillableDisplaySort sets the "display_sort" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableDisplaySort(v *int) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetDisplaySort(*v)
+	}
+	return _u
+}
+
+// AddDisplaySort adds value to the "display_sort" field.
+func (_u *ChannelMonitorUpdateOne) AddDisplaySort(v int) *ChannelMonitorUpdateOne {
+	_u.mutation.AddDisplaySort(v)
 	return _u
 }
 
@@ -1377,6 +1425,12 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if _u.mutation.GroupNameCleared() {
 		_spec.ClearField(channelmonitor.FieldGroupName, field.TypeString)
+	}
+	if value, ok := _u.mutation.DisplaySort(); ok {
+		_spec.SetField(channelmonitor.FieldDisplaySort, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDisplaySort(); ok {
+		_spec.AddField(channelmonitor.FieldDisplaySort, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(channelmonitor.FieldEnabled, field.TypeBool, value)

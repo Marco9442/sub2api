@@ -175,6 +175,21 @@ var (
 	ErrChannelMonitorInvalidInterval = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_INTERVAL", "interval_seconds must be in [15, 3600]",
 	)
+	ErrChannelMonitorDisplayGroupInvalid = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_INVALID", "display group name is empty, too long, unknown, or the catalog is full",
+	)
+	ErrChannelMonitorDisplayGroupNameTaken = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_NAME_TAKEN", "display group name is already used",
+	)
+	ErrChannelMonitorDisplayGroupNotFound = infraerrors.NotFound(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_NOT_FOUND", "display group not found",
+	)
+	ErrChannelMonitorDisplayLayoutInvalid = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_LAYOUT_INVALID", "display layout must include each group and monitor exactly once",
+	)
+	ErrChannelMonitorDisplayGroupLayoutRequired = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_LAYOUT_REQUIRED", "existing monitor group membership can only be changed from the display layout",
+	)
 	ErrChannelMonitorInvalidJitter = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_JITTER", "jitter_seconds must be >= 0 and interval_seconds - jitter_seconds must be >= 15",
 	)

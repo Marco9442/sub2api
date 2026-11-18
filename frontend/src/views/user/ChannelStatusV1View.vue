@@ -12,6 +12,7 @@
     />
 
     <MonitorCardGrid
+      v-if="grouped.flat"
       :items="items"
       :window="currentWindow"
       :countdown-seconds="countdown"
@@ -20,6 +21,26 @@
       :metric="metric"
       @card-click="openDetail"
     />
+    <div v-else class="space-y-8">
+      <section v-for="section in grouped.sections" :key="section.key" class="space-y-3">
+        <div class="flex items-center gap-2">
+          <ProviderIcon v-if="section.provider" :provider="section.provider" :size="20" />
+          <Icon v-else name="grid" size="sm" />
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ section.title }}</h2>
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('channelStatus.groups.count', { n: section.items.length }) }}</span>
+        </div>
+        <MonitorCardGrid
+          :items="section.items"
+          :window="currentWindow"
+          :countdown-seconds="countdown"
+          :loading="loading"
+          :detail-cache="detailCache"
+          :metric="metric"
+          hide-empty
+          @card-click="openDetail"
+        />
+      </section>
+    </div>
 
     <MonitorDetailDialog
       :show="showDetail"
@@ -41,8 +62,11 @@ import {
   status as fetchChannelMonitorDetail,
   type UserMonitorView,
   type UserMonitorDetail,
+  type UserMonitorGroup,
 } from '@/api/channelMonitor'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
+import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import MonitorHero, {
   type MonitorWindow,
   type OverallStatus,
@@ -52,6 +76,7 @@ import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
 import { DEFAULT_INTERVAL_SECONDS } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { legacyOverallStatus, overallMonitorStatus } from '@/utils/channelMonitorStatus'
+import { groupMonitorSections } from '@/utils/channelMonitorDisplayGroups'
 
 const props = withDefaults(defineProps<{ metric?: 'latency' | 'ttft' }>(), { metric: 'latency' })
 const metric = computed(() => props.metric)
@@ -61,6 +86,7 @@ const appStore = useAppStore()
 
 // ── State ──
 const items = ref<UserMonitorView[]>([])
+const groups = ref<UserMonitorGroup[]>([])
 const loading = ref(false)
 const currentWindow = ref<MonitorWindow>('7d')
 // Custom 模式下由管理员配置的时间档；为空时沿用 7/15/30 天。
@@ -95,6 +121,8 @@ const detailTitle = computed(() => {
   return detailTarget.value?.name || t('channelStatus.detailTitle')
 })
 
+const grouped = computed(() => groupMonitorSections(items.value, groups.value, t('channelStatus.groups.ungrouped')))
+
 // ── Loaders ──
 async function reload(silent = false) {
   if (abortController) abortController.abort()
@@ -108,6 +136,7 @@ async function reload(silent = false) {
     })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
+    groups.value = res.groups ?? []
     windows.value = res.windows ?? []
     statusYellowPercent.value = storedPercent(res.status_yellow_percent)
     statusRedPercent.value = storedPercent(res.status_red_percent)

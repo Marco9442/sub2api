@@ -38,6 +38,8 @@ type Tx struct {
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
 	ChannelMonitorDailyRollup *ChannelMonitorDailyRollupClient
+	// ChannelMonitorDisplayGroup is the client for interacting with the ChannelMonitorDisplayGroup builders.
+	ChannelMonitorDisplayGroup *ChannelMonitorDisplayGroupClient
 	// ChannelMonitorHistory is the client for interacting with the ChannelMonitorHistory builders.
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
@@ -235,6 +237,7 @@ func (tx *Tx) init() {
 	tx.BatchImageJob = NewBatchImageJobClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
+	tx.ChannelMonitorDisplayGroup = NewChannelMonitorDisplayGroupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)

@@ -24,6 +24,8 @@
         </div>
       </header>
 
+      <DisplayGroupPanel :reload-token="layoutReloadToken" @loaded="displayGroups = $event" />
+
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 
       <TablePageLayout v-else>
@@ -128,8 +130,9 @@
       :show="showDialog"
       :monitor="editing"
       :allow-custom-override="previewMode === 'custom'"
+      :groups="displayGroups"
       @close="closeDialog"
-      @saved="reload"
+      @saved="onMonitorSaved"
     />
 
     <MonitorTemplateManagerDialog
@@ -192,6 +195,8 @@ import { getChannelMonitorMode } from '@/utils/featureFlags'
 import { isActiveChannelMonitorMode, type ChannelMonitorMode } from '@/utils/channelMonitorMode'
 import { tokenRateDisplay } from '@/utils/channelMonitorMetric'
 import ChannelMonitorModePanel from '@/components/admin/monitor/ChannelMonitorModePanel.vue'
+import DisplayGroupPanel from '@/components/admin/monitor/DisplayGroupPanel.vue'
+import type { ChannelMonitorDisplayGroupView } from '@/api/admin/channelMonitor'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -216,6 +221,8 @@ const enabledFilter = ref<'' | 'true' | 'false'>('')
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 
 const showDialog = ref(false)
+const displayGroups = ref<ChannelMonitorDisplayGroupView[]>([])
+const layoutReloadToken = ref(0)
 const showTemplateManager = ref(false)
 const editing = ref<ChannelMonitor | null>(null)
 const showDeleteDialog = ref(false)
@@ -307,11 +314,21 @@ function closeDialog() {
   editing.value = null
 }
 
+function refreshDisplayGroups() {
+  layoutReloadToken.value += 1
+}
+
+function onMonitorSaved() {
+  refreshDisplayGroups()
+  reload()
+}
+
 async function toggleEnabled(row: ChannelMonitor) {
   const next = !row.enabled
   try {
     await adminAPI.channelMonitor.update(row.id, { enabled: next })
     row.enabled = next
+    refreshDisplayGroups()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   }
@@ -349,6 +366,7 @@ async function handleDuplicate(row: ChannelMonitor) {
   try {
     const duplicate = await adminAPI.channelMonitor.duplicate(row.id)
     appStore.showSuccess(t('admin.channelMonitor.duplicateSuccess', { name: duplicate.name }))
+    refreshDisplayGroups()
     await reload()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.duplicateFailed')))
@@ -367,6 +385,7 @@ async function confirmDelete() {
   try {
     await adminAPI.channelMonitor.del(deleting.value.id)
     appStore.showSuccess(t('admin.channelMonitor.deleteSuccess'))
+    refreshDisplayGroups()
     showDeleteDialog.value = false
     deleting.value = null
     reload()
