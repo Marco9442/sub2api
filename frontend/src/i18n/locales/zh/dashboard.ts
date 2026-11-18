@@ -614,6 +614,9 @@ export default {
     groups: {
       ungrouped: '未分组',
       count: '{n} 个渠道'
+    },
+    legend: {
+      noRecord: '无记录'
     }
   },
 

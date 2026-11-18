@@ -609,6 +609,9 @@ export default {
     groups: {
       ungrouped: 'Ungrouped',
       count: '{n} channels'
+    },
+    legend: {
+      noRecord: 'No record'
     }
   },
 

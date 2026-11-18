@@ -21,7 +21,7 @@
       :metric="metric"
       @card-click="openDetail"
     />
-    <div v-else class="space-y-8">
+    <div v-else class="space-y-6">
       <section v-for="section in grouped.sections" :key="section.key" class="space-y-3">
         <div class="flex items-center gap-2">
           <ProviderIcon v-if="section.provider" :provider="section.provider" :size="20" />
@@ -37,10 +37,22 @@
           :detail-cache="detailCache"
           :metric="metric"
           hide-empty
+          hide-group-badge
           @card-click="openDetail"
         />
       </section>
     </div>
+
+    <footer v-if="items.length > 0" class="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+      <span v-for="status in legendStatuses" :key="status" class="inline-flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-full" :class="legendColor[status]" />
+        {{ t(`monitorCommon.status.${status}`) }}
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-dark-600" />
+        {{ t('channelStatus.legend.noRecord') }}
+      </span>
+    </footer>
 
     <MonitorDetailDialog
       :show="showDetail"
@@ -122,6 +134,13 @@ const detailTitle = computed(() => {
 })
 
 const grouped = computed(() => groupMonitorSections(items.value, groups.value, t('channelStatus.groups.ungrouped')))
+const legendStatuses = ['operational', 'degraded', 'failed', 'error'] as const
+const legendColor: Record<(typeof legendStatuses)[number], string> = {
+  operational: 'bg-emerald-500',
+  degraded: 'bg-amber-500',
+  failed: 'bg-red-500',
+  error: 'bg-red-500',
+}
 
 // ── Loaders ──
 async function reload(silent = false) {
