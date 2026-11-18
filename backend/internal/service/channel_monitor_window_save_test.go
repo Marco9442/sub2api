@@ -83,7 +83,18 @@ func TestFillWindowAvailability_UsesConfiguredWindow(t *testing.T) {
 	require.Equal(t, 75.0, *views[0].WindowAvailability)
 }
 
-func TestFillWindowAvailability_SkipsNonCustom(t *testing.T) {
+func TestFillWindowAvailability_SkipsV2(t *testing.T) {
+	repo := &windowSecondsRepo{}
+	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+
+	views := []*UserMonitorView{{ID: 1, PrimaryModel: "gpt-5"}}
+	svc.fillWindowAvailability(context.Background(), views, "")
+
+	require.Equal(t, 0, repo.calledSeconds)
+	require.Nil(t, views[0].WindowAvailability)
+}
+
+func TestFillWindowAvailability_V1UsesDefaultWindow(t *testing.T) {
 	repo := &windowSecondsRepo{}
 	svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
 	svc.SetRuntimeReader(&v1RuntimeStub{})
@@ -91,8 +102,7 @@ func TestFillWindowAvailability_SkipsNonCustom(t *testing.T) {
 	views := []*UserMonitorView{{ID: 1, PrimaryModel: "gpt-5"}}
 	svc.fillWindowAvailability(context.Background(), views, "")
 
-	require.Equal(t, 0, repo.calledSeconds)
-	require.Nil(t, views[0].WindowAvailability)
+	require.Equal(t, 90*60, repo.calledSeconds)
 }
 
 func TestAvailabilityWindows_CustomReturnsConfigured(t *testing.T) {
@@ -107,10 +117,15 @@ func TestAvailabilityWindows_CustomReturnsConfigured(t *testing.T) {
 	require.Equal(t, "15m,1d", formatAvailabilityWindows(got))
 }
 
-func TestAvailabilityWindows_NonCustomReturnsNil(t *testing.T) {
+func TestAvailabilityWindows_V2ReturnsNil(t *testing.T) {
+	svc := NewChannelMonitorService(&overrideCatalogRepo{}, &duplicateChannelMonitorEncryptor{})
+	require.Nil(t, svc.AvailabilityWindows(context.Background()))
+}
+
+func TestAvailabilityWindows_V1ReturnsDefault(t *testing.T) {
 	svc := NewChannelMonitorService(&overrideCatalogRepo{}, &duplicateChannelMonitorEncryptor{})
 	svc.SetRuntimeReader(&v1RuntimeStub{})
-	require.Nil(t, svc.AvailabilityWindows(context.Background()))
+	require.Equal(t, "90m,1d,3d,7d", formatAvailabilityWindows(svc.AvailabilityWindows(context.Background())))
 }
 
 func TestFillWindowAvailability_UsesRequestedWindow(t *testing.T) {

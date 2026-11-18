@@ -21,6 +21,7 @@
         </p>
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
           <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
+          <ChannelMonitorDisplaySettings />
         </div>
       </header>
 
@@ -201,6 +202,7 @@ import { getChannelMonitorMode } from '@/utils/featureFlags'
 import { isActiveChannelMonitorMode, type ChannelMonitorMode } from '@/utils/channelMonitorMode'
 import { tokenRateDisplay } from '@/utils/channelMonitorMetric'
 import ChannelMonitorModePanel from '@/components/admin/monitor/ChannelMonitorModePanel.vue'
+import ChannelMonitorDisplaySettings from '@/components/admin/monitor/ChannelMonitorDisplaySettings.vue'
 import DisplayGroupPanel from '@/components/admin/monitor/DisplayGroupPanel.vue'
 import type { ChannelMonitorDisplayGroupView } from '@/api/admin/channelMonitor'
 

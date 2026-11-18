@@ -447,6 +447,21 @@ export async function saveDisplayLayout(payload: ChannelMonitorDisplayLayoutPayl
   await apiClient.put('/admin/channel-monitors/display-groups/layout', payload)
 }
 
+export interface ChannelMonitorDisplaySettings {
+  default_interval_seconds: number
+  timeline_points: number
+}
+
+export async function getDisplaySettings(): Promise<ChannelMonitorDisplaySettings> {
+  const { data } = await apiClient.get<ChannelMonitorDisplaySettings>('/admin/channel-monitors/display-settings')
+  return data
+}
+
+export async function saveDisplaySettings(payload: ChannelMonitorDisplaySettings): Promise<ChannelMonitorDisplaySettings> {
+  const { data } = await apiClient.put<ChannelMonitorDisplaySettings>('/admin/channel-monitors/display-settings', payload)
+  return data
+}
+
 export async function listHistory(
   id: number,
   params: HistoryParams = {}
@@ -473,6 +488,8 @@ export const channelMonitorAPI = {
   renameDisplayGroup,
   deleteDisplayGroup,
   saveDisplayLayout,
+  getDisplaySettings,
+  saveDisplaySettings,
   listHistory,
 }
 

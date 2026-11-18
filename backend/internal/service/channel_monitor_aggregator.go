@@ -111,13 +111,13 @@ func (s *ChannelMonitorService) batchLatest(ctx context.Context, ids []int64) ma
 	return latestMap
 }
 
-// batchTimeline 批量取每个 monitor 主模型最近 monitorTimelineMaxPoints 条历史。
+// batchTimeline 批量取每个 monitor 主模型最近若干条历史。条数来自显示设置，缺省 20。
 func (s *ChannelMonitorService) batchTimeline(
 	ctx context.Context,
 	ids []int64,
 	primaryByID map[int64]string,
 ) map[int64][]*ChannelMonitorHistoryEntry {
-	timelineMap, err := s.repo.ListRecentHistoryForMonitors(ctx, ids, primaryByID, monitorTimelineMaxPoints)
+	timelineMap, err := s.repo.ListRecentHistoryForMonitors(ctx, ids, primaryByID, s.TimelinePoints(ctx))
 	if err != nil {
 		slog.Warn("channel_monitor: user view batch timeline failed", "error", err)
 		return map[int64][]*ChannelMonitorHistoryEntry{}

@@ -222,9 +222,10 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 		})
 	}
 	payload := gin.H{
-		"items":   items,
-		"groups":  groups,
-		"windows": h.monitorService.AvailabilityWindows(c.Request.Context()),
+		"items":           items,
+		"groups":          groups,
+		"windows":         h.monitorService.AvailabilityWindows(c.Request.Context()),
+		"timeline_points": h.monitorService.TimelinePoints(c.Request.Context()),
 	}
 	if yellow, red := h.monitorService.StatusPercents(c.Request.Context()); yellow > 0 && red > 0 {
 		payload["status_yellow_percent"] = yellow

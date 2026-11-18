@@ -553,7 +553,7 @@ export default {
     extraModelsEmpty: '无附加模型',
     latencyEmpty: '-',
     availabilityPrefix: '可用性',
-    dialogLatency: '对话延迟',
+    dialogLatency: '首字速度',
     endpointPing: '端点 PING',
     history60pts: '近 {n} 次记录',
     nextUpdateIn: '{n}s 后刷新',

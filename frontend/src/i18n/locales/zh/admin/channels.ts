@@ -577,6 +577,17 @@ export default {
         loadFailed: '加载展示分组失败',
         loadRetry: '重试'
       },
+      displaySettings: {
+        interval: '新渠道默认检测间隔',
+        intervalHint: '只作用于之后新建的渠道。已有渠道仍用各自的间隔。默认 300 秒，也就是 5 分钟。范围 15–3600 秒。',
+        timeline: '状态页记录条数',
+        timelineHint: '状态页卡片上显示的最近记录条数。默认 20，范围 1–200。',
+        invalid: '间隔需在 15–3600 秒，记录条数需在 1–200。',
+        saved: '显示设置已保存',
+        saveFailed: '保存显示设置失败',
+        loadFailed: '加载显示设置失败',
+        loadRetry: '重试'
+      },
       nameRequired: '请输入监控名称',
       primaryModelRequired: '请输入主模型',
       linkedAccountRequired: '请选择关联账号',

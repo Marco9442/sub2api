@@ -548,7 +548,7 @@ export default {
     extraModelsEmpty: 'No extra models',
     latencyEmpty: '-',
     availabilityPrefix: 'Availability',
-    dialogLatency: 'Dialog Latency',
+    dialogLatency: 'First-token speed',
     endpointPing: 'Endpoint PING',
     history60pts: 'HISTORY ({n} PTS)',
     nextUpdateIn: 'NEXT UPDATE IN {n}s',

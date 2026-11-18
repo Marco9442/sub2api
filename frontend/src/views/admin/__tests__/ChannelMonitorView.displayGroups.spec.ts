@@ -19,6 +19,10 @@ vi.mock('@/components/admin/monitor/ChannelMonitorModePanel.vue', () => ({
   default: { name: 'ChannelMonitorModePanel', template: '<div />' },
 }))
 
+vi.mock('@/components/admin/monitor/ChannelMonitorDisplaySettings.vue', () => ({
+  default: { name: 'ChannelMonitorDisplaySettings', template: '<div />' },
+}))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: { channelMonitor: { list: listMonitors } },
 }))

@@ -70,7 +70,7 @@
           v-model="windowsText"
           class="input"
           :class="{ 'input-error': windowsInvalid }"
-          placeholder="7d,15d,30d"
+          placeholder="90m,1d,3d,7d"
         />
         <p v-if="windowsInvalid" class="input-error-text">{{ t('channelMonitorCustom.windowsInvalid') }}</p>
         <p v-else class="input-hint">{{ t('channelMonitorCustom.windowsHint') }}</p>

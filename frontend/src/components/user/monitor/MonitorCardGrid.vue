@@ -42,6 +42,7 @@
         :window="window"
         :availability-value="resolveAvailability(item)"
         :countdown-seconds="countdownSeconds"
+        :timeline-length="timelineLength"
         :metric="metric"
         :hide-group-badge="hideGroupBadge"
         @click="emit('cardClick', item)"
@@ -52,20 +53,20 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
+import type { UserMonitorView } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
 
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   items: UserMonitorView[]
   window: string
   countdownSeconds: number
   loading: boolean
-  detailCache: Record<number, UserMonitorDetail>
+  timelineLength?: number
   metric?: 'latency' | 'ttft'
   hideEmpty?: boolean
   hideGroupBadge?: boolean
-}>(), { metric: 'latency', hideEmpty: false, hideGroupBadge: false })
+}>(), { metric: 'latency', hideEmpty: false, hideGroupBadge: false, timelineLength: 20 })
 
 const emit = defineEmits<{
   (e: 'cardClick', item: UserMonitorView): void
@@ -74,16 +75,6 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 function resolveAvailability(item: UserMonitorView): number | null {
-  if (props.metric === 'ttft') {
-    return item.window_availability ?? null
-  }
-  if (props.window === '7d') {
-    return item.availability_7d ?? null
-  }
-  const detail = props.detailCache[item.id]
-  if (!detail) return null
-  const primary = detail.models.find(m => m.model === item.primary_model)
-  if (!primary) return null
-  return props.window === '15d' ? primary.availability_15d ?? null : primary.availability_30d ?? null
+  return item.window_availability ?? null
 }
 </script>

@@ -33,7 +33,7 @@ function mountCard(overrides: Partial<UserMonitorView> = {}, hideGroupBadge = fa
   }
   return mount(MonitorCard, {
     props: { item, window: '7d', availabilityValue: 100, countdownSeconds: 0, hideGroupBadge },
-    global: { stubs: { MonitorTimeline: { props: ['buckets'], template: '<div data-test="timeline">{{ buckets.length }}</div>' } } },
+    global: { stubs: { MonitorTimeline: { props: ['buckets', 'length'], template: '<div data-test="timeline">{{ buckets.length }}:{{ length }}</div>' } } },
   })
 }
 
@@ -41,8 +41,12 @@ describe('MonitorCard display density', () => {
   it('keeps the primary metric, availability and timeline when the badge is hidden', () => {
     const wrapper = mountCard({}, true)
     expect(wrapper.text()).toContain('820')
-    expect(wrapper.text()).toContain('100')
-    expect(wrapper.get('[data-test="timeline"]').text()).toBe('1')
+    expect(wrapper.text()).toContain('100.00')
+    expect(wrapper.text()).toContain('monitorCommon.availabilityPrefix')
+    expect(wrapper.text()).toContain('monitorCommon.extraModelsCount')
+    expect(wrapper.text()).not.toContain('monitorCommon.endpointPing')
+    expect(wrapper.text()).not.toContain('40')
+    expect(wrapper.get('[data-test="timeline"]').text()).toBe('1:20')
     expect(wrapper.text()).not.toContain('beta')
     expect(wrapper.classes().join(' ')).toContain('p-4')
     expect(wrapper.classes().join(' ')).toContain('min-h-[240px]')

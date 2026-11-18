@@ -10001,7 +10001,7 @@ const form = reactive<SettingsForm>({
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_mode: "v1",
-  channel_monitor_default_interval_seconds: 60,
+  channel_monitor_default_interval_seconds: 300,
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
   channel_monitor_hide_user_ranking: false,
@@ -11738,7 +11738,7 @@ async function saveSettings() {
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_mode: form.channel_monitor_mode,
       channel_monitor_default_interval_seconds:
-        Number(form.channel_monitor_default_interval_seconds) || 60,
+        Number(form.channel_monitor_default_interval_seconds) || 300,
       channel_monitor_hide_throughput: Boolean(form.channel_monitor_hide_throughput),
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       channel_monitor_hide_user_ranking: Boolean(form.channel_monitor_hide_user_ranking),

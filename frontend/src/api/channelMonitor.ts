@@ -38,7 +38,7 @@ export interface UserMonitorView {
   primary_metric_kind?: string
   primary_ping_latency_ms: number | null
   availability_7d: number | null
-  // Custom 模式下所选时间档的可用率；null 表示该档内没有记录。
+  // 当前时间档的可用率；null 表示该档内没有记录。
   window_availability?: number | null
   extra_models: UserMonitorExtraModel[]
   timeline: MonitorTimelinePoint[]
@@ -58,8 +58,9 @@ export interface UserMonitorGroup {
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
   groups?: UserMonitorGroup[]
-  // Custom 模式下管理员配置的时间档；其他模式为空。
+  // V1 和 Custom 返回时间档。V2 不返回。
   windows?: { amount: number; unit: 'm' | 'd' }[]
+  timeline_points?: number
   // Custom 模式下用户页右上角的黄、红百分比。其他模式不返回。
   status_yellow_percent?: number
   status_red_percent?: number

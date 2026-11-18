@@ -2,7 +2,7 @@
   <AppLayout>
     <MonitorHero
       :overall-status="overallStatus"
-      :interval-seconds="DEFAULT_INTERVAL_SECONDS"
+      :interval-seconds="PAGE_REFRESH_SECONDS"
       :window="currentWindow"
       :loading="loading"
       :auto-refresh="autoRefresh"
@@ -17,7 +17,7 @@
       :window="currentWindow"
       :countdown-seconds="countdown"
       :loading="loading"
-      :detail-cache="detailCache"
+      :timeline-length="timelinePoints"
       :metric="metric"
       @card-click="openDetail"
     />
@@ -36,7 +36,7 @@
           :window="currentWindow"
           :countdown-seconds="countdown"
           :loading="loading"
-          :detail-cache="detailCache"
+          :timeline-length="timelinePoints"
           :metric="metric"
           hide-empty
           hide-group-badge
@@ -67,15 +67,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import {
   list as listChannelMonitorViews,
-  status as fetchChannelMonitorDetail,
   type UserMonitorView,
-  type UserMonitorDetail,
   type UserMonitorGroup,
 } from '@/api/channelMonitor'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -87,7 +85,6 @@ import MonitorHero, {
 } from '@/components/user/monitor/MonitorHero.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
-import { DEFAULT_INTERVAL_SECONDS } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import { legacyOverallStatus, overallMonitorStatus } from '@/utils/channelMonitorStatus'
 import { groupMonitorSections } from '@/utils/channelMonitorDisplayGroups'
@@ -99,16 +96,17 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 // ── State ──
+const PAGE_REFRESH_SECONDS = 60
+const DEFAULT_TIMELINE_POINTS = 20
+
 const items = ref<UserMonitorView[]>([])
 const groups = ref<UserMonitorGroup[]>([])
 const loading = ref(false)
-const currentWindow = ref<MonitorWindow>('7d')
-// Custom 模式下由管理员配置的时间档；为空时沿用 7/15/30 天。
+const currentWindow = ref<MonitorWindow>('90m')
 const windows = ref<{ amount: number; unit: 'm' | 'd' }[]>([])
+const timelinePoints = ref(DEFAULT_TIMELINE_POINTS)
 const statusYellowPercent = ref(30)
 const statusRedPercent = ref(30)
-const customWindows = computed(() => metric.value === 'ttft')
-const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 
@@ -117,7 +115,7 @@ let abortController: AbortController | null = null
 const autoRefresh = useAutoRefresh({
   storageKey: 'channel-status-auto-refresh',
   intervals: [30, 60, 120] as const,
-  defaultInterval: DEFAULT_INTERVAL_SECONDS,
+  defaultInterval: PAGE_REFRESH_SECONDS,
   defaultEnabled: true,
   onRefresh: () => refresh(true),
   shouldPause: () => document.hidden || loading.value,
@@ -127,7 +125,7 @@ const countdown = autoRefresh.countdown
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
   const statuses = items.value.map((it) => it.primary_status)
-  if (!customWindows.value) return legacyOverallStatus(statuses)
+  if (metric.value !== 'ttft') return legacyOverallStatus(statuses)
   return overallMonitorStatus(statuses, statusYellowPercent.value, statusRedPercent.value)
 })
 
@@ -145,23 +143,29 @@ const legendColor: Record<(typeof legendStatuses)[number], string> = {
 }
 
 // ── Loaders ──
-async function reload(silent = false) {
+async function reload(silent = false, windowAdjusted = false) {
   if (abortController) abortController.abort()
   const ctrl = new AbortController()
   abortController = ctrl
   if (!silent) loading.value = true
+  let retryWindow = false
   try {
     const res = await listChannelMonitorViews({
       signal: ctrl.signal,
-      window: customWindows.value ? currentWindow.value : undefined,
+      window: currentWindow.value,
     })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
     groups.value = res.groups ?? []
     windows.value = res.windows ?? []
+    timelinePoints.value = storedPoints(res.timeline_points)
     statusYellowPercent.value = storedPercent(res.status_yellow_percent)
     statusRedPercent.value = storedPercent(res.status_red_percent)
-    syncCustomWindow()
+    const keys = windows.value.map((w) => `${w.amount}${w.unit}`)
+    if (keys.length > 0 && !keys.includes(currentWindow.value)) {
+      currentWindow.value = keys[0]
+      retryWindow = !windowAdjusted
+    }
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
@@ -173,51 +177,24 @@ async function reload(silent = false) {
       abortController = null
     }
   }
+  if (retryWindow) await reload(silent, true)
 }
 
-// 所选档不在配置里时（首次进入或管理员改了配置），切到第一档，与后端回退一致。
 function storedPercent(value: number | undefined): number {
   return typeof value === 'number' && value > 0 ? value : 30
 }
 
-function syncCustomWindow() {
-  if (!customWindows.value || windows.value.length === 0) return
-  const keys = windows.value.map((w) => `${w.amount}${w.unit}`)
-  if (!keys.includes(currentWindow.value)) currentWindow.value = keys[0]
+function storedPoints(value: number | undefined): number {
+  return typeof value === 'number' && value > 0 ? value : DEFAULT_TIMELINE_POINTS
 }
 
 async function refresh(silent = false) {
   await reload(silent)
-  if (customWindows.value) return
-  // After base reload, refresh any cached detail records so non-7d availability
-  // values stay in sync without forcing the user to switch tabs again.
-  if (currentWindow.value !== '7d') {
-    await Promise.all(items.value.map(it => loadDetail(it.id, true)))
-  }
 }
 
-async function loadDetail(id: number, force = false) {
-  if (!force && detailCache[id]) return
-  try {
-    detailCache[id] = await fetchChannelMonitorDetail(id)
-  } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
-  }
-}
-
-async function ensureDetailsForWindow() {
-  if (customWindows.value || currentWindow.value === '7d') return
-  await Promise.all(items.value.map(it => loadDetail(it.id)))
-}
-
-// ── Handlers ──
 async function handleWindowChange(value: MonitorWindow) {
   currentWindow.value = value
-  if (customWindows.value) {
-    await reload(true)
-    return
-  }
-  await ensureDetailsForWindow()
+  await reload(true)
 }
 
 function openDetail(row: UserMonitorView) {
@@ -229,10 +206,6 @@ function closeDetail() {
   showDetail.value = false
   detailTarget.value = null
 }
-
-watch(items, () => {
-  void ensureDetailsForWindow()
-})
 
 watch(
   () => appStore.cachedPublicSettings?.channel_monitor_enabled,

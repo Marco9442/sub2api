@@ -31,7 +31,7 @@ function item(overrides: Partial<UserMonitorView> = {}): UserMonitorView {
 
 function mountGrid(metric: 'latency' | 'ttft', view: UserMonitorView) {
   return mount(MonitorCardGrid, {
-    props: { items: [view], window: '7d', countdownSeconds: 0, loading: false, detailCache: {}, metric },
+    props: { items: [view], window: '7d', countdownSeconds: 0, loading: false, metric },
     global: { stubs: { MonitorCard: { props: ['availabilityValue'], template: '<div data-test="card">{{ availabilityValue }}</div>' } } },
   })
 }
@@ -49,13 +49,18 @@ describe('MonitorCardGrid availability', () => {
 
   it('hides the page empty state inside a titled section', () => {
     const wrapper = mount(MonitorCardGrid, {
-      props: { items: [], window: '7d', countdownSeconds: 0, loading: false, detailCache: {}, hideEmpty: true },
+      props: { items: [], window: '7d', countdownSeconds: 0, loading: false, hideEmpty: true },
     })
     expect(wrapper.text()).not.toContain('channelStatus.empty.title')
   })
 
-  it('keeps the seven day value outside custom mode', () => {
+  it('uses the selected window value outside custom mode', () => {
     const wrapper = mountGrid('latency', item({ availability_7d: 99, window_availability: 10 }))
-    expect(wrapper.get('[data-test="card"]').text()).toBe('99')
+    expect(wrapper.get('[data-test="card"]').text()).toBe('10')
+  })
+
+  it('does not fall back to the seven day value when the window has no records', () => {
+    const wrapper = mountGrid('latency', item({ window_availability: null, availability_7d: 99 }))
+    expect(wrapper.get('[data-test="card"]').text()).toBe('')
   })
 })

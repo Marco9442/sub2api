@@ -60,7 +60,11 @@ describe('availabilityWindows', () => {
   })
 
   it('rejects invalid windows', () => {
+    expect(parseAvailabilityWindows('90m')).toEqual([{ amount: 90, unit: 'm' }])
     expect(parseAvailabilityWindows('0d')).toBeNull()
+    expect(parseAvailabilityWindows('91m')).toBeNull()
+    expect(parseAvailabilityWindows('7h')).toBeNull()
+    expect(parseAvailabilityWindows('24h')).toBeNull()
     expect(parseAvailabilityWindows('31d')).toBeNull()
     expect(parseAvailabilityWindows('15m,15m')).toBeNull()
     expect(parseAvailabilityWindows('1m,2m,3m,4m,5m,6m,7m')).toBeNull()
@@ -68,9 +72,10 @@ describe('availabilityWindows', () => {
 
   it('treats an empty field as the default windows', () => {
     expect(parseAvailabilityWindows('')).toEqual([
+      { amount: 90, unit: 'm' },
+      { amount: 1, unit: 'd' },
+      { amount: 3, unit: 'd' },
       { amount: 7, unit: 'd' },
-      { amount: 15, unit: 'd' },
-      { amount: 30, unit: 'd' },
     ])
   })
 })

@@ -811,6 +811,8 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
 		monitors.GET("/mode", h.Admin.ChannelMonitor.GetMode)
 		monitors.PUT("/mode", h.Admin.ChannelMonitor.UpdateMode)
+		monitors.GET("/display-settings", h.Admin.ChannelMonitor.GetDisplaySettings)
+		monitors.PUT("/display-settings", h.Admin.ChannelMonitor.UpdateDisplaySettings)
 		monitors.GET("/display-groups", h.Admin.ChannelMonitor.ListDisplayGroups)
 		monitors.POST("/display-groups", h.Admin.ChannelMonitor.CreateDisplayGroup)
 		monitors.PUT("/display-groups/layout", h.Admin.ChannelMonitor.ApplyDisplayLayout)

@@ -50,11 +50,14 @@
       :primary-value="primaryMetricValue"
       :primary-unit="primaryMetricUnit"
       :primary-note="tokenRateNote"
-      secondary-icon="globe"
-      :secondary-label="t('monitorCommon.endpointPing')"
-      :secondary-value="formatLatency(item.primary_ping_latency_ms)"
-      secondary-unit="ms"
+      secondary-icon="clock"
+      :secondary-label="t('monitorCommon.availabilityPrefix')"
+      :secondary-value="availabilityDisplay"
+      :secondary-unit="availabilityUnit"
     />
+    <p v-if="extraModelsCountLabel" class="mt-1 text-[11px] text-gray-400 text-right">
+      {{ extraModelsCountLabel }}
+    </p>
 
     <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
     <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" conceal-error class="mt-2" />
@@ -62,17 +65,11 @@
     <!-- Divider -->
     <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
 
-    <!-- Availability row -->
-    <MonitorAvailabilityRow
-      :window-label="availabilityLabel"
-      :value="availabilityValue"
-      :samples-label="extraModelsCountLabel"
-    />
-
     <!-- Timeline -->
     <MonitorTimeline
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
+      :length="timelineLength"
     />
   </button>
 </template>
@@ -81,7 +78,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView } from '@/api/channelMonitor'
-import { windowLabel } from '@/utils/channelMonitorCustom'
 import {
   useChannelMonitorFormat,
   providerGradient,
@@ -90,7 +86,6 @@ import { isChannelMonitorQuotaVisible } from '@/utils/featureFlags'
 import { resolveMonitorMetricKind, tokenRateDisplay } from '@/utils/channelMonitorMetric'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
-import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
 import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
 
@@ -112,15 +107,16 @@ const props = withDefaults(defineProps<{
   window: string
   availabilityValue: number | null
   countdownSeconds: number
+  timelineLength?: number
   metric?: 'latency' | 'ttft'
   hideGroupBadge?: boolean
-}>(), { metric: 'latency', hideGroupBadge: false })
+}>(), { metric: 'latency', hideGroupBadge: false, timelineLength: 20 })
 
 const emit = defineEmits<{
   (e: 'click'): void
 }>()
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const {
   statusLabel,
   statusBadgeClass,
@@ -160,12 +156,15 @@ const quotaVisible = computed(
   () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
 )
 
-const availabilityLabel = computed(() => {
-  // 固定档用原有文案；Custom 时间档按分钟或天格式化。
-  const key = `channelStatus.windowTab.${props.window}`
-  const win = te(key) ? t(key) : windowLabel(props.window, t)
-  return `${t('monitorCommon.availabilityPrefix')} · ${win}`
+const availabilityDisplay = computed(() => {
+  if (props.availabilityValue === null || Number.isNaN(props.availabilityValue)) {
+    return t('monitorCommon.latencyEmpty')
+  }
+  return props.availabilityValue.toFixed(2)
 })
+const availabilityUnit = computed(() => (
+  props.availabilityValue === null || Number.isNaN(props.availabilityValue) ? '' : '%'
+))
 
 const extraModelsCountLabel = computed(() => {
   const count = props.item.extra_models?.length ?? 0

@@ -34,7 +34,6 @@ describe('MonitorCardGrid density', () => {
         window: '7d',
         countdownSeconds: 0,
         loading: false,
-        detailCache: {},
         hideGroupBadge: true,
       },
       global: {

@@ -415,16 +415,15 @@ type availabilitySecondsRepo interface {
 	ComputeAvailabilityForMonitorsSeconds(ctx context.Context, ids []int64, seconds int, kind string) (map[int64][]*ChannelMonitorAvailability, error)
 }
 
-// fillWindowAvailability 在 Custom 模式下，按配置的第一档时间计算可用率。
-// 该档内没有记录时保持 nil。非 Custom 模式不做任何事。
+// fillWindowAvailability 按当前时间档计算可用率。该档内没有记录时保持 nil。
+// V2 不计算。V1 和未单独配置的 Custom 用默认档。
 func (s *ChannelMonitorService) fillWindowAvailability(ctx context.Context, views []*UserMonitorView, windowKey string) {
-	if len(views) == 0 || s.probeRuntime(ctx).Mode != ChannelMonitorModeCustom {
+	if len(views) == 0 || s.probeRuntime(ctx).Mode == ChannelMonitorModeV2 {
 		return
 	}
-	cfg, _ := s.loadCustomConfig(ctx)
-	windows := cfg.AvailabilityWindows
+	windows := s.AvailabilityWindows(ctx)
 	if len(windows) == 0 {
-		windows = defaultAvailabilityWindows()
+		return
 	}
 	repo, ok := s.repo.(availabilitySecondsRepo)
 	if !ok {
@@ -456,16 +455,20 @@ func (s *ChannelMonitorService) StatusPercents(ctx context.Context) (int, int) {
 	return cfg.StatusYellowPercent, cfg.StatusRedPercent
 }
 
-// AvailabilityWindows 返回 Custom 模式的时间档；非 Custom 返回 nil。
+// AvailabilityWindows 返回用户页时间档。V2 返回 nil。
+// Custom 已保存的档优先；否则 V1 和空配置都用默认档。
 func (s *ChannelMonitorService) AvailabilityWindows(ctx context.Context) []AvailabilityWindow {
-	if s.probeRuntime(ctx).Mode != ChannelMonitorModeCustom {
+	mode := s.probeRuntime(ctx).Mode
+	if mode == ChannelMonitorModeV2 {
 		return nil
 	}
-	cfg, _ := s.loadCustomConfig(ctx)
-	if len(cfg.AvailabilityWindows) == 0 {
-		return defaultAvailabilityWindows()
+	if mode == ChannelMonitorModeCustom {
+		cfg, _ := s.loadCustomConfig(ctx)
+		if len(cfg.AvailabilityWindows) > 0 {
+			return cfg.AvailabilityWindows
+		}
 	}
-	return cfg.AvailabilityWindows
+	return defaultAvailabilityWindows()
 }
 
 // pickWindow 匹配用户选择的时间档；没有匹配时用第一档。

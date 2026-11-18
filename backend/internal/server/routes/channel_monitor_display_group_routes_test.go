@@ -64,4 +64,19 @@ func TestDisplayGroupRoutesAreNotCapturedByMonitorID(t *testing.T) {
 	require.Empty(t, body.Reason)
 	require.Equal(t, "openai", body.Data.Groups[0].Name)
 	require.Equal(t, []int64{9}, body.Data.Groups[0].MonitorIDs)
+
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/admin/channel-monitors/display-settings", nil))
+	require.Equal(t, http.StatusOK, response.Code)
+	var settingsBody struct {
+		Reason string `json:"reason"`
+		Data   struct {
+			DefaultIntervalSeconds int `json:"default_interval_seconds"`
+			TimelinePoints         int `json:"timeline_points"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &settingsBody))
+	require.Empty(t, settingsBody.Reason)
+	require.Equal(t, 300, settingsBody.Data.DefaultIntervalSeconds)
+	require.Equal(t, 20, settingsBody.Data.TimelinePoints)
 }

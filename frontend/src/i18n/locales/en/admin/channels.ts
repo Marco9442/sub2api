@@ -577,6 +577,17 @@ export default {
         loadFailed: 'Failed to load display groups',
         loadRetry: 'Retry'
       },
+      displaySettings: {
+        interval: 'Default interval for new monitors',
+        intervalHint: 'Applies only to monitors created after this change. Existing monitors keep their own interval. Default is 300 seconds, which is 5 minutes. Range 15–3600 seconds.',
+        timeline: 'Status page record count',
+        timelineHint: 'How many recent records each status card shows. Default 20, range 1–200.',
+        invalid: 'Interval must be 15–3600 seconds, and the record count must be 1–200.',
+        saved: 'Display settings saved',
+        saveFailed: 'Failed to save display settings',
+        loadFailed: 'Failed to load display settings',
+        loadRetry: 'Retry'
+      },
       nameRequired: 'Please enter a monitor name',
       primaryModelRequired: 'Please enter a primary model',
       linkedAccountRequired: 'Please select a linked account',
