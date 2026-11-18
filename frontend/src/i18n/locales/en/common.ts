@@ -191,6 +191,7 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',
+    userDocs: 'Guide',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     accounts2: 'Accounts #2',

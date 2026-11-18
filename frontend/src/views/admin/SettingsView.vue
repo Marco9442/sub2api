@@ -6638,7 +6638,7 @@
                 </label>
                 <input
                   v-model="form.doc_url"
-                  type="url"
+                  type="text"
                   class="input font-mono text-sm"
                   :placeholder="t('admin.settings.site.docUrlPlaceholder')"
                 />
@@ -8997,6 +8997,7 @@ import AdminAccessKeysSettings from "@/components/admin/settings/AdminAccessKeys
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
+import { isSameOriginPath } from "@/utils/url";
 import { formatBalanceRechargeMultiplier } from "@/utils/rechargeBonus";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
@@ -11401,8 +11402,13 @@ async function saveSettings() {
       }
     };
     // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
+    const isValidDocUrl = (url: string): boolean => {
+      if (!url) return true;
+      return isSameOriginPath(url) || isValidHttpUrl(url);
+    };
     if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = "";
-    if (!isValidHttpUrl(form.doc_url)) form.doc_url = "";
+    form.doc_url = form.doc_url.trim();
+    if (!isValidDocUrl(form.doc_url)) form.doc_url = "";
     syncWeChatConnectMode();
     const wechatStoredMode = deriveWeChatConnectStoredMode(
       form.wechat_connect_open_enabled,
