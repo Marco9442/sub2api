@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -522,6 +523,14 @@ func removePostgresTextNUL(value string) string {
 	return strings.ReplaceAll(value, "\x00", "")
 }
 
+func providerClientIP(raw string) string {
+	parsed := net.ParseIP(strings.TrimSpace(raw))
+	if parsed == nil {
+		return ""
+	}
+	return parsed.String()
+}
+
 func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, orderID, amount, subject string) payment.CreatePaymentRequest {
 	return payment.CreatePaymentRequest{
 		OrderID:            orderID,
@@ -530,7 +539,7 @@ func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.Inst
 		Subject:            subject,
 		ReturnURL:          req.ReturnURL,
 		OpenID:             strings.TrimSpace(req.OpenID),
-		ClientIP:           req.ClientIP,
+		ClientIP:           providerClientIP(req.ClientIP),
 		IsMobile:           req.IsMobile,
 		InstanceSubMethods: selectedInstanceSupportedTypes(sel),
 	}

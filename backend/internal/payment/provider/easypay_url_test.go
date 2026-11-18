@@ -2,8 +2,11 @@ package provider
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -163,6 +166,7 @@ func TestEasyPayCreatePaymentResolvesRelativeQRCode(t *testing.T) {
 		Amount:      "1.00",
 		PaymentType: payment.TypeWxpay,
 		Subject:     "Relative QR",
+		ClientIP:    "203.0.113.10",
 	})
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
@@ -190,6 +194,7 @@ func TestEasyPayCreatePaymentResolvesRelativeMobilePayURL2(t *testing.T) {
 		PaymentType: payment.TypeWxpay,
 		Subject:     "Relative H5",
 		IsMobile:    true,
+		ClientIP:    "203.0.113.10",
 	})
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
@@ -215,6 +220,7 @@ func TestEasyPayCreatePaymentKeepsUpstreamAbsoluteAndOpaqueValues(t *testing.T) 
 		Amount:      "1.00",
 		PaymentType: payment.TypeWxpay,
 		Subject:     "Absolute",
+		ClientIP:    "203.0.113.10",
 	})
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
@@ -224,5 +230,88 @@ func TestEasyPayCreatePaymentKeepsUpstreamAbsoluteAndOpaqueValues(t *testing.T) 
 	}
 	if resp.QRCode != deepLink {
 		t.Fatalf("QRCode = %q, want %q unchanged", resp.QRCode, deepLink)
+	}
+}
+
+func TestEasyPayCreatePaymentWithoutVerifiedIPUsesSubmit(t *testing.T) {
+	t.Parallel()
+
+	var mapiCalls int
+	var posted []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(r.URL.Path, "mapi.php") {
+			mapiCalls++
+			posted = body
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":1,"trade_no":"TRADE_NO","qrcode":"weixin://pay"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	provider, err := NewEasyPay("test-instance", map[string]string{
+		"pid":       "pid-1",
+		"pkey":      "pkey-1",
+		"apiBase":   server.URL,
+		"notifyUrl": "https://example.com/notify",
+		"returnUrl": "https://example.com/return",
+	})
+	if err != nil {
+		t.Fatalf("NewEasyPay: %v", err)
+	}
+
+	for _, clientIP := range []string{"", "proxy:baima-mesh", "unknown", "not-an-ip"} {
+		resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+			OrderID:     "sub2-no-ip",
+			Amount:      "1.00",
+			PaymentType: payment.TypeAlipay,
+			Subject:     "No IP",
+			ClientIP:    clientIP,
+		})
+		if err != nil {
+			t.Fatalf("CreatePayment(%q): %v", clientIP, err)
+		}
+		payURL, err := url.Parse(resp.PayURL)
+		if err != nil {
+			t.Fatalf("parse pay url: %v", err)
+		}
+		if !strings.HasSuffix(payURL.Path, "/submit.php") {
+			t.Fatalf("PayURL path = %q, want submit.php", payURL.Path)
+		}
+		if payURL.Query().Get("clientip") != "" {
+			t.Fatalf("submit.php included clientip %q", payURL.Query().Get("clientip"))
+		}
+		if resp.QRCode != "" {
+			t.Fatalf("QRCode = %q, want empty", resp.QRCode)
+		}
+	}
+	if mapiCalls != 0 {
+		t.Fatalf("mapi.php calls = %d, want 0", mapiCalls)
+	}
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2-ipv6",
+		Amount:      "1.00",
+		PaymentType: payment.TypeAlipay,
+		Subject:     "IPv6",
+		ClientIP:    "2600:3c18::1",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment ipv6: %v", err)
+	}
+	if mapiCalls != 1 {
+		t.Fatalf("mapi.php calls = %d, want 1", mapiCalls)
+	}
+	if resp.QRCode != "weixin://pay" {
+		t.Fatalf("QRCode = %q, want upstream qr", resp.QRCode)
+	}
+	values, err := url.ParseQuery(string(posted))
+	if err != nil {
+		t.Fatalf("parse mapi body: %v", err)
+	}
+	if values.Get("clientip") != "2600:3c18::1" {
+		t.Fatalf("clientip = %q, want 2600:3c18::1", values.Get("clientip"))
 	}
 }

@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -282,7 +283,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		Amount:          req.Amount,
 		PaymentType:     req.PaymentType,
 		OpenID:          req.OpenID,
-		ClientIP:        c.ClientIP(),
+		ClientIP:        paymentClientIP(c),
 		IsMobile:        mobile,
 		IsWeChatBrowser: isWeChatBrowser(c),
 		SrcHost:         c.Request.Host,
@@ -298,6 +299,11 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func paymentClientIP(c *gin.Context) string {
+	record, _ := ip.PaymentAddresses(c)
+	return record
 }
 
 func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeChatPaymentResumeClaims) error {

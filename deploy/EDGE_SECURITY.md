@@ -171,6 +171,56 @@ server:
     - ::1/128
 ```
 
+## Entrance peers
+
+Set `SECURITY_ENTRANCE_TUNNEL_PEER` or `SECURITY_ENTRANCE_MESH_PEER` to the
+Docker DNS name of the process that connects directly to Sub2API. Either name
+enables entrance resolution. Leave both unset to keep the compatibility path
+above.
+
+The resolver compares `RemoteAddr` with those names. It checks cached addresses
+before asking DNS again, mesh first. A refresh happens only when neither cache
+contains the address, and only once inside 30 seconds. The last successful
+result is kept for 5 minutes from that success. A failed lookup does not extend
+that period, and a cache read past it is not trusted. Failed lookups still wait
+30 seconds before asking again. A peer that has never resolved is unknown.
+Unknown peers and the mesh peer ignore forwarding headers.
+
+For the tunnel peer, `CF-Connecting-IP` is the address that connected to the
+edge. It is the client when it is not an origin egress. It is also the client
+when `X-Forwarded-For` has no distinct address to its left, including a normal
+public IPv6 request that arrives without a previous hop. A left hop is the
+client only when the last raw hop equals `CF-Connecting-IP` and that left raw
+hop is public. A last-hop mismatch, an unparseable token in either of the last
+two raw positions, or a non-public left hop is a known proxy with no verified
+client. A missing chain still uses the connecting address.
+
+IPv4 egress ranges come from `SECURITY_ENTRANCE_EGRESS_FILE`. The file is JSON
+with `fetched_at`, `ipv4`, and `ipv6`. A missing, empty, stale, or unreadable
+IPv4 list stops range trust and treats `CF-Connecting-IP` as the client.
+`SECURITY_ENTRANCE_EGRESS_MAX_AGE` defaults to `24h`. IPv6 treats every public
+address as egress until a fresh file contains IPv6 prefixes; those prefixes
+then replace that rule. Prefixes in a stale file are not used. Private,
+link-local, unique-local, multicast, documentation (`2001:db8::/32`), and
+IPv4-mapped addresses are not public IPv6. An IPv4-mapped address is judged as
+the embedded IPv4 address. Public here also excludes loopback, unspecified,
+and `100.64.0.0/10`.
+
+Logs, IP restrictions, rate-limit identity, session binding, and new payment
+orders share this result. `GetClientIP` and `GetSecurityClientIP` return a
+verified address or empty. They do not return a proxy marker or the container
+address. API key IP restrictions fail closed when that address is empty. A
+known entrance without a verified client keeps a stable session fingerprint
+across container address changes. A real client-address or User-Agent change
+still follows the existing session-binding policy. Payment records store the
+verified address, or a short proxy or unknown marker when entrance resolution
+is on and no client was verified. Provider payloads receive a literal address
+only.
+
+Trusting an entire origin range, or every public IPv6 address, allows another
+tenant of that range to supply a left hop. That is the coverage tradeoff of
+this mode. Do not set a wide `server.trusted_proxies` list to imitate it.
+
 ## Nginx baseline
 
 Define shared zones in the `http` block. Tune rates to measured legitimate

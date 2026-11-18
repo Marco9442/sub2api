@@ -56,6 +56,49 @@ func TestSessionBindingContextFollowsForwardedIPSwitch(t *testing.T) {
 	}
 }
 
+func TestSessionBindingContextUsesStableProxyIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ip.SetEntrance(&ip.Entrance{
+		MeshPeer: "baima-mesh",
+		Resolve: func(name string) ([]string, error) {
+			if name == "baima-mesh" {
+				return []string{"172.18.0.3", "172.18.0.9"}, nil
+			}
+			return nil, nil
+		},
+	})
+	t.Cleanup(func() { ip.SetEntrance(nil) })
+
+	cfg := &config.Config{}
+	cfg.SetTrustForwardedIPForAPIKeyACL(true)
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	r.Use(SessionBindingContext(cfg))
+	r.GET("/t", func(c *gin.Context) {
+		binding := service.SessionBindingFromContext(c.Request.Context())
+		require.Empty(t, binding.IP)
+		require.Equal(t, "proxy:baima-mesh", binding.HashKey)
+		require.Empty(t, SecurityClientIP(c))
+		require.Empty(t, ip.GetClientIP(c))
+		require.Equal(t, (&service.SessionBinding{HashKey: "proxy:baima-mesh", UserAgent: "mesh-admin"}).Hash(), binding.Hash())
+		c.Status(200)
+	})
+
+	serve := func(remote string) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/t", nil)
+		req.RemoteAddr = remote
+		req.Header.Set("CF-Connecting-IP", "203.0.113.10")
+		req.Header.Set("X-Forwarded-For", "203.0.113.9, 203.0.113.10")
+		req.Header.Set("User-Agent", "mesh-admin")
+		r.ServeHTTP(w, req)
+		require.Equal(t, 200, w.Code)
+	}
+	serve("172.18.0.3:1234")
+	serve("172.18.0.9:1234")
+}
+
 func TestSessionBindingContextSnapshotsForwardedModeAndHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

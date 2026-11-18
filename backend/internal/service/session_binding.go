@@ -14,22 +14,27 @@ var ErrSessionBindingMismatch = infraerrors.Unauthorized("SESSION_BINDING_MISMAT
 
 // SessionBinding 会话指纹：登录时的客户端 IP 与 User-Agent。
 // 会话绑定开启时，两者任一变化即导致会话失效（防止凭证被盗后异地重放）。
+// HashKey 非空时替代 IP 参与哈希，IP 仍只保存已验证的客户端地址。
 type SessionBinding struct {
 	IP        string
 	UserAgent string
+	HashKey   string
 }
 
-// Hash 计算绑定指纹哈希（IP 与 UA 合并，任一变化哈希即变化）。
+// Hash 计算绑定指纹哈希（地址成分与 UA 合并，任一变化哈希即变化）。
 func (b *SessionBinding) Hash() string {
 	if b == nil {
 		return ""
 	}
-	ip := strings.TrimSpace(b.IP)
+	key := strings.TrimSpace(b.HashKey)
+	if key == "" {
+		key = strings.TrimSpace(b.IP)
+	}
 	ua := strings.TrimSpace(b.UserAgent)
-	if ip == "" && ua == "" {
+	if key == "" && ua == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(ip + "\n" + ua))
+	sum := sha256.Sum256([]byte(key + "\n" + ua))
 	return hex.EncodeToString(sum[:16])
 }
 

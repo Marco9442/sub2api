@@ -62,6 +62,12 @@ func Logger() gin.HandlerFunc {
 			zap.String("method", method),
 			zap.String("path", path),
 		}
+		if id, ok := ip.CurrentIdentity(c); ok {
+			fields = append(fields, zap.String("client_source", id.Source))
+			if id.PeerName != "" {
+				fields = append(fields, zap.String("client_peer", id.PeerName))
+			}
+		}
 		if rejected {
 			fields = append(fields,
 				zap.String("ingress_reject_reason", string(reason)),
