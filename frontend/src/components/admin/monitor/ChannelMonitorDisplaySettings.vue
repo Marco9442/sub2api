@@ -1,5 +1,12 @@
 <template>
-  <section class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700" data-test="display-settings">
+  <section data-test="display-settings">
+    <header class="mb-4">
+      <h2 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+        <Icon name="cog" size="sm" class="text-gray-400" />
+        {{ t('admin.channelMonitor.displaySettings.title') }}
+      </h2>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channelMonitor.displaySettings.hint') }}</p>
+    </header>
     <div class="grid gap-3 sm:grid-cols-2">
       <label>
         <span class="input-label" for="monitor-default-interval">{{ t('admin.channelMonitor.displaySettings.interval') }}</span>
@@ -49,6 +56,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { getDisplaySettings, saveDisplaySettings } from '@/api/admin/channelMonitor'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()

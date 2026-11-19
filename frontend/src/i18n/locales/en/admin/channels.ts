@@ -575,9 +575,17 @@ export default {
         renamed: 'Display group renamed',
         deleted: 'Display group deleted',
         loadFailed: 'Failed to load display groups',
-        loadRetry: 'Retry'
+        loadRetry: 'Retry',
+        unsaved: 'Unsaved',
+        relocate: 'Move to group',
+        disabledTag: 'Disabled',
+        orphanHint: 'Group was deleted; reclassify before saving',
+        emptyGroup: 'No channels in this group yet. Use the dropdown on the right to move one in.',
+        emptyState: 'No display groups yet. Create one, then move channels into it.'
       },
       displaySettings: {
+        title: 'Display settings',
+        hint: 'Defaults for new monitors and the status page. Existing monitors keep their own interval.',
         interval: 'Default interval for new monitors',
         intervalHint: 'Applies only to monitors created after this change. Existing monitors keep their own interval. Default is 300 seconds, which is 5 minutes. Range 15–3600 seconds.',
         timeline: 'Status page record count',

@@ -1,11 +1,9 @@
 <template>
   <AppLayout>
     <div class="w-full min-w-0 space-y-6 pb-8">
-      <header
-        class="page-header mb-0 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700 sm:p-6"
-      >
-        <h1 class="page-title flex items-center gap-2 text-xl font-black text-gray-900 dark:text-white">
-          <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400">
+      <header class="page-header mb-0">
+        <h1 class="page-title flex items-center gap-2.5 text-xl font-black text-gray-900 dark:text-white">
+          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
             <Icon name="chart" size="sm" />
           </span>
           {{ t('admin.channelMonitor.title') }}
@@ -19,11 +17,16 @@
                 : t('channelMonitorV2.admin.descriptionV2')
           }}
         </p>
-        <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
-          <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
-          <ChannelMonitorDisplaySettings />
-        </div>
       </header>
+
+      <!-- 检测模式与展示设置分成两张卡：模式是全局开关，显示设置是默认值，混在一起会让保存按钮指向不清。 -->
+      <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+        <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
+      </section>
+
+      <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+        <ChannelMonitorDisplaySettings />
+      </section>
 
       <DisplayGroupPanel
         ref="displayGroupPanel"
@@ -57,16 +60,21 @@
                 <Icon name="exclamationTriangle" size="sm" class="text-red-500" />
               </HelpTooltip>
             </div>
+            <div v-if="row.group_name" class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+              {{ row.group_name }}
+            </div>
           </template>
 
           <template #cell-provider="{ row }">
-            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="providerBadgeClass(row.provider)">
-              {{ providerLabel(row.provider) }}
-            </span>
-            <!-- 三种检测模式并列展示，quota 系配额数据源与纯探活一眼可分 -->
-            <span class="ml-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="checkModeBadgeClass(row.check_mode)">
-              {{ checkModeLabel(row.check_mode) }}
-            </span>
+            <div class="flex flex-wrap items-center gap-1">
+              <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="providerBadgeClass(row.provider)">
+                {{ providerLabel(row.provider) }}
+              </span>
+              <!-- 三种检测模式并列展示，quota 系配额数据源与纯探活一眼可分 -->
+              <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="checkModeBadgeClass(row.check_mode)">
+                {{ checkModeLabel(row.check_mode) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-primary_model="{ row }">
@@ -74,7 +82,21 @@
           </template>
 
           <template #cell-availability_7d="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatAvailability(row) }}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm tabular-nums" :class="availabilityTextClass(row)">{{ formatAvailability(row) }}</span>
+              <!-- 细条只做趋势提示，数值仍然可读；避免表格里出现重复的百分比文本 -->
+              <span
+                v-if="availabilityValue(row) !== null"
+                class="h-1.5 w-12 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"
+                aria-hidden="true"
+              >
+                <span
+                  class="block h-full rounded-full transition-[width] duration-300"
+                  :class="availabilityBarClass(row)"
+                  :style="{ width: `${Math.min(100, Math.max(0, availabilityValue(row) ?? 0))}%` }"
+                />
+              </span>
+            </div>
           </template>
 
           <template #cell-latency="{ row }">
@@ -196,7 +218,7 @@ import MonitorRunResultDialog from '@/components/admin/monitor/MonitorRunResultD
 import MonitorPrimaryModelCell from '@/components/admin/monitor/MonitorPrimaryModelCell.vue'
 import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { useChannelMonitorFormat, availabilityTone } from '@/composables/useChannelMonitorFormat'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
 import { getChannelMonitorMode } from '@/utils/featureFlags'
 import { isActiveChannelMonitorMode, type ChannelMonitorMode } from '@/utils/channelMonitorMode'
@@ -219,6 +241,34 @@ const {
   formatLatency,
   formatAvailability,
 } = useChannelMonitorFormat()
+
+/** 表格里的可用率只在有数据时返回数值，用于细条宽度与配色。 */
+function availabilityValue(row: ChannelMonitor): number | null {
+  if (!row.primary_status) return null
+  return row.availability_7d ?? null
+}
+
+const AVAILABILITY_TEXT: Record<string, string> = {
+  danger: 'text-red-600 dark:text-red-400',
+  warning: 'text-amber-600 dark:text-amber-400',
+  muted: 'text-gray-400 dark:text-gray-500',
+}
+
+const AVAILABILITY_BAR: Record<string, string> = {
+  danger: 'bg-red-500',
+  warning: 'bg-amber-500',
+  muted: 'bg-gray-300 dark:bg-dark-600',
+}
+
+function availabilityTextClass(row: ChannelMonitor): string {
+  const tone = availabilityTone(availabilityValue(row))
+  // 有数据但正常时用正文色，避免整列都被染成彩色。
+  return AVAILABILITY_TEXT[tone] ?? 'text-gray-900 dark:text-gray-100'
+}
+
+function availabilityBarClass(row: ChannelMonitor): string {
+  return AVAILABILITY_BAR[availabilityTone(availabilityValue(row))] ?? 'bg-emerald-500'
+}
 
 const monitors = ref<ChannelMonitor[]>([])
 const loading = ref(false)
@@ -261,8 +311,7 @@ const deleteConfirmMessage = computed(() => {
   return t('admin.channelMonitor.deleteConfirm', { name })
 })
 
-function clampedPage(page: number, total: number, pageSize: number): number {
-  if (total <= 0 || pageSize <= 0 || page <= 1) return page
+function clampedPage(page: number, total: number, pageSize: number): number {  if (total <= 0 || pageSize <= 0 || page <= 1) return page
   const last = Math.ceil(total / pageSize)
   return page > last ? last : page
 }

@@ -575,9 +575,17 @@ export default {
         renamed: '展示分组已重命名',
         deleted: '展示分组已删除',
         loadFailed: '加载展示分组失败',
-        loadRetry: '重试'
+        loadRetry: '重试',
+        unsaved: '未保存',
+        relocate: '调整所属分组',
+        disabledTag: '已停用',
+        orphanHint: '分组已删除，重新归类后才能保存',
+        emptyGroup: '这个分组还没有渠道。用右侧下拉把渠道移进来。',
+        emptyState: '还没有展示分组。新建一个，再把渠道移进来。'
       },
       displaySettings: {
+        title: '显示设置',
+        hint: '这些是新渠道和状态页的默认值，不影响已有渠道的检测间隔。',
         interval: '新渠道默认检测间隔',
         intervalHint: '只作用于之后新建的渠道。已有渠道仍用各自的间隔。默认 300 秒，也就是 5 分钟。范围 15–3600 秒。',
         timeline: '状态页记录条数',

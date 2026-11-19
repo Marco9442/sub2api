@@ -7,6 +7,8 @@
       :loading="loading"
       :auto-refresh="autoRefresh"
       :windows="windows"
+      :total-count="items.length"
+      :degraded-count="degradedCount"
       @update:window="handleWindowChange"
       @refresh="refresh()"
     />
@@ -21,15 +23,20 @@
       :metric="metric"
       @card-click="openDetail"
     />
-    <div v-else class="space-y-6">
+    <div v-else class="space-y-7">
       <section v-for="section in grouped.sections" :key="section.key" class="space-y-3">
-        <div class="flex min-w-0 items-center gap-2">
-          <span class="inline-flex shrink-0">
-            <ProviderIcon v-if="section.provider" :provider="section.provider" :size="20" />
+        <div class="flex min-w-0 items-center gap-2.5">
+          <span
+            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gray-100/80 text-gray-500 dark:bg-dark-800 dark:text-gray-400"
+          >
+            <ProviderIcon v-if="section.provider" :provider="section.provider" :size="16" />
             <Icon v-else name="grid" size="sm" />
           </span>
           <h2 class="min-w-0 break-words text-sm font-semibold text-gray-900 dark:text-white">{{ section.title }}</h2>
-          <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('channelStatus.groups.count', { n: section.items.length }) }}</span>
+          <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+            {{ t('channelStatus.groups.count', { n: section.items.length }) }}
+          </span>
+          <span class="h-px min-w-4 flex-1 bg-gray-200/70 dark:bg-dark-700/70" aria-hidden="true" />
         </div>
         <MonitorCardGrid
           :items="section.items"
@@ -45,7 +52,11 @@
       </section>
     </div>
 
-    <footer v-if="items.length > 0" class="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+    <footer
+      v-if="items.length > 0"
+      class="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gray-100 bg-white/60 px-4 py-3 text-xs text-gray-500 dark:border-dark-700/60 dark:bg-dark-800/40 dark:text-gray-400"
+    >
+      <span class="font-medium text-gray-600 dark:text-gray-300">{{ t('channelStatus.legend.title') }}</span>
       <span v-for="status in legendStatuses" :key="status" class="inline-flex items-center gap-1.5">
         <span class="h-2.5 w-2.5 rounded-full" :class="legendColor[status]" />
         {{ t(`monitorCommon.status.${status}`) }}
@@ -53,6 +64,10 @@
       <span class="inline-flex items-center gap-1.5">
         <span class="h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-dark-600" />
         {{ t('channelStatus.legend.noRecord') }}
+      </span>
+      <span class="ml-auto inline-flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+        <Icon name="clock" size="xs" />
+        {{ t('channelStatus.legend.windowHint', { window: t(`channelMonitorCustom.${windowUnitKey}`, { n: windowAmount }) }) }}
       </span>
     </footer>
 
@@ -134,6 +149,19 @@ const detailTitle = computed(() => {
 })
 
 const grouped = computed(() => groupMonitorSections(items.value, groups.value, t('channelStatus.groups.ungrouped')))
+const degradedCount = computed(
+  () => items.value.filter((item) => item.primary_status !== 'operational').length,
+)
+
+// 顶部与页脚都要按当前档位显示「90 分钟 / 1 天」，统一在视图层解析一次。
+const windowAmount = computed(() => {
+  const match = /^(\d+)([md])$/.exec(currentWindow.value)
+  return match ? Number(match[1]) : 0
+})
+const windowUnitKey = computed(() => {
+  const match = /^(\d+)([md])$/.exec(currentWindow.value)
+  return match?.[2] === 'd' ? 'windowDays' : 'windowMinutes'
+})
 const legendStatuses = ['operational', 'degraded', 'failed', 'error'] as const
 const legendColor: Record<(typeof legendStatuses)[number], string> = {
   operational: 'bg-emerald-500',

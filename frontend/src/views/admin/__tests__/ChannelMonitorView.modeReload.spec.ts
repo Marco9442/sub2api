@@ -74,11 +74,13 @@ function mountView() {
 }
 
 describe('ChannelMonitorView mode reload', () => {
-  it('shows the mode panel as the only mode switcher inside the page header', async () => {
+  it('shows the mode panel as the only mode switcher on the page', async () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.find('header button.save-mode').exists()).toBe(true)
+    // 模式切换已从页头拆成独立卡片，页头只保留标题与说明。
+    expect(wrapper.find('header button.save-mode').exists()).toBe(false)
+    expect(wrapper.find('button.save-mode').exists()).toBe(true)
     expect(wrapper.find('[role="tablist"]').exists()).toBe(false)
   })
 

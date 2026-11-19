@@ -1,16 +1,27 @@
 <template>
   <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.channelMonitor.displayGroups.title') }}</h2>
+      <div class="min-w-0">
+        <h2 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+          <Icon name="grid" size="sm" class="text-gray-400" />
+          {{ t('admin.channelMonitor.displayGroups.title') }}
+        </h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channelMonitor.displayGroups.hint') }}</p>
       </div>
-      <button type="button" class="btn btn-primary btn-sm" :disabled="!canSave" @click="save">
-        {{ t('common.save') }}
-      </button>
+      <div class="flex items-center gap-2">
+        <span
+          v-if="dirty"
+          class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+        >
+          {{ t('admin.channelMonitor.displayGroups.unsaved') }}
+        </span>
+        <button type="button" class="btn btn-primary btn-sm" :disabled="!canSave" @click="save">
+          {{ t('common.save') }}
+        </button>
+      </div>
     </div>
 
-    <form class="mt-4 flex flex-wrap gap-2" @submit.prevent="createGroup">
+    <form class="mt-4 flex flex-wrap items-center gap-2" @submit.prevent="createGroup">
       <input
         v-model="newName"
         type="text"
@@ -18,6 +29,7 @@
         :placeholder="t('admin.channelMonitor.displayGroups.namePlaceholder')"
       />
       <button type="submit" class="btn btn-secondary btn-sm" :disabled="layoutLocked || !newName.trim()">
+        <Icon name="plus" size="xs" class="mr-1" />
         {{ t('common.add') }}
       </button>
     </form>
@@ -36,42 +48,112 @@
       <article
         v-for="section in sections"
         :key="section.key"
-        class="rounded-2xl border border-gray-100 p-3 dark:border-dark-700"
+        class="rounded-2xl border border-gray-100 dark:border-dark-700"
+        :class="section.orphan ? 'bg-amber-50/40 dark:bg-amber-500/5' : 'bg-gray-50/40 dark:bg-dark-900/20'"
       >
-        <div class="flex flex-wrap items-center gap-2">
+        <!-- 分组头：名称即输入框，操作收进右侧一组图标按钮 -->
+        <header class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-3 py-2 dark:border-dark-700/70">
           <template v-if="section.group">
-            <input v-model="renameName[section.group.id]" type="text" class="input max-w-xs" />
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked" @click="rename(section.group)">
-              {{ t('admin.channelMonitor.displayGroups.rename') }}
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || section.groupIndex === 0" :aria-label="t('admin.channelMonitor.displayGroups.moveUp')" @click="moveGroup(section.groupIndex, -1)">
-              <Icon name="chevronUp" size="sm" />
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || section.groupIndex === draft.groups.length - 1" :aria-label="t('admin.channelMonitor.displayGroups.moveDown')" @click="moveGroup(section.groupIndex, 1)">
-              <Icon name="chevronDown" size="sm" />
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm text-red-600" :disabled="layoutLocked" @click="askDelete(section.group)">
-              {{ t('common.delete') }}
-            </button>
-            <span v-if="disabledOnly(section.monitorIds)" class="text-xs text-gray-500">
+            <input
+              v-model="renameName[section.group.id]"
+              type="text"
+              class="input max-w-xs py-1 text-sm font-medium"
+              :aria-label="t('admin.channelMonitor.displayGroups.rename')"
+            />
+            <span class="rounded-md bg-white px-1.5 py-0.5 text-[11px] text-gray-500 ring-1 ring-gray-200/70 dark:bg-dark-800 dark:text-gray-400 dark:ring-dark-700">
+              {{ t('channelStatus.groups.count', { n: section.monitorIds.length }) }}
+            </span>
+            <span v-if="disabledOnly(section.monitorIds)" class="text-[11px] text-gray-500 dark:text-gray-400">
               {{ t('admin.channelMonitor.displayGroups.disabledOnlyCount', { n: section.monitorIds.length }) }}
             </span>
+            <div class="ml-auto flex items-center gap-1">
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked" @click="rename(section.group)">
+                {{ t('admin.channelMonitor.displayGroups.rename') }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                :disabled="layoutLocked || section.groupIndex === 0"
+                :aria-label="t('admin.channelMonitor.displayGroups.moveUp')"
+                @click="moveGroup(section.groupIndex, -1)"
+              >
+                <Icon name="chevronUp" size="sm" />
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                :disabled="layoutLocked || section.groupIndex === draft.groups.length - 1"
+                :aria-label="t('admin.channelMonitor.displayGroups.moveDown')"
+                @click="moveGroup(section.groupIndex, 1)"
+              >
+                <Icon name="chevronDown" size="sm" />
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm text-red-600" :disabled="layoutLocked" @click="askDelete(section.group)">
+                {{ t('common.delete') }}
+              </button>
+            </div>
           </template>
-          <h3 v-else class="text-sm font-medium text-gray-900 dark:text-white">{{ section.title }}</h3>
-        </div>
+          <template v-else>
+            <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ section.title }}</h3>
+            <span class="rounded-md bg-white px-1.5 py-0.5 text-[11px] text-gray-500 ring-1 ring-gray-200/70 dark:bg-dark-800 dark:text-gray-400 dark:ring-dark-700">
+              {{ t('channelStatus.groups.count', { n: section.monitorIds.length }) }}
+            </span>
+            <p v-if="section.orphan" class="ml-auto text-[11px] text-amber-600 dark:text-amber-400">
+              {{ t('admin.channelMonitor.displayGroups.orphanHint') }}
+            </p>
+          </template>
+        </header>
 
-        <ul class="mt-2 space-y-1">
-          <li v-for="(id, index) in section.monitorIds" :key="id" class="flex flex-wrap items-center gap-2 text-sm">
-            <span :class="monitorOf(id)?.enabled ? 'text-gray-900 dark:text-white' : 'text-gray-400'">
+        <p
+          v-if="section.monitorIds.length === 0"
+          class="px-3 py-3 text-xs text-gray-400 dark:text-gray-500"
+        >
+          {{ t('admin.channelMonitor.displayGroups.emptyGroup') }}
+        </p>
+
+        <ul v-else class="divide-y divide-gray-100 dark:divide-dark-700/60">
+          <li
+            v-for="(id, index) in section.monitorIds"
+            :key="id"
+            class="group flex flex-wrap items-center gap-2 px-3 py-1.5 text-sm"
+          >
+            <span
+              class="min-w-0 flex-1 truncate"
+              :class="monitorOf(id)?.enabled ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'"
+            >
               {{ monitorOf(id)?.name || id }}
             </span>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || index === 0" :aria-label="t('admin.channelMonitor.displayGroups.moveUp')" @click="moveMonitor(section, index, -1)">
+            <span
+              v-if="monitorOf(id) && !monitorOf(id)!.enabled"
+              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-dark-700 dark:text-gray-400"
+            >
+              {{ t('admin.channelMonitor.displayGroups.disabledTag') }}
+            </span>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="layoutLocked || index === 0"
+              :aria-label="t('admin.channelMonitor.displayGroups.moveUp')"
+              @click="moveMonitor(section, index, -1)"
+            >
               <Icon name="chevronUp" size="xs" />
             </button>
-            <button type="button" class="btn btn-secondary btn-sm" :disabled="layoutLocked || index === section.monitorIds.length - 1" :aria-label="t('admin.channelMonitor.displayGroups.moveDown')" @click="moveMonitor(section, index, 1)">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="layoutLocked || index === section.monitorIds.length - 1"
+              :aria-label="t('admin.channelMonitor.displayGroups.moveDown')"
+              @click="moveMonitor(section, index, 1)"
+            >
               <Icon name="chevronDown" size="xs" />
             </button>
-            <select class="input max-w-xs py-1" :disabled="layoutLocked" :value="locationKey(id)" @change="onRelocateEvent(id, $event)">
+            <select
+              class="input max-w-[10rem] py-1 text-xs"
+              :disabled="layoutLocked"
+              :value="locationKey(id)"
+              :aria-label="t('admin.channelMonitor.displayGroups.relocate')"
+              @change="onRelocateEvent(id, $event)"
+            >
               <option v-if="section.orphan" :value="section.key">{{ section.title }}</option>
               <option value="ungrouped">{{ t('channelStatus.groups.ungrouped') }}</option>
               <option v-for="group in draft.groups" :key="group.id" :value="`group:${group.id}`">{{ group.name }}</option>
@@ -79,6 +161,10 @@
           </li>
         </ul>
       </article>
+
+      <p v-if="sections.length === 0" class="rounded-2xl border border-dashed border-gray-200 px-4 py-8 text-center text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400">
+        {{ t('admin.channelMonitor.displayGroups.emptyState') }}
+      </p>
     </div>
 
     <!-- 监控表单也是 50。这里必须更高，否则确认被表单挡住。 -->

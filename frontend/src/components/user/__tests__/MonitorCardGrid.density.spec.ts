@@ -27,7 +27,7 @@ const item: UserMonitorView = {
 }
 
 describe('MonitorCardGrid density', () => {
-  it('keeps the column breakpoints and passes the section badge flag', () => {
+  it('sizes columns from the container and passes the section badge flag', () => {
     const wrapper = mount(MonitorCardGrid, {
       props: {
         items: [item],
@@ -46,12 +46,10 @@ describe('MonitorCardGrid density', () => {
       },
     })
     const grid = wrapper.get('.grid')
-    const classes = grid.classes().join(' ')
-    expect(classes).toContain('grid-cols-1')
-    expect(classes).toContain('md:grid-cols-2')
-    expect(classes).toContain('xl:grid-cols-3')
-    expect(classes).toContain('2xl:grid-cols-4')
-    expect(classes).toContain('gap-4')
+    expect(grid.classes().join(' ')).toContain('gap-4')
+    // 列数跟着内容区宽度走：auto-fit + 20rem 最小列宽，窄容器自动降列。
+    expect(grid.attributes('style')).toContain('auto-fit')
+    expect(grid.attributes('style')).toContain('20rem')
     expect(wrapper.get('[data-test="card"]').attributes('data-hide')).toBe('true')
   })
 })

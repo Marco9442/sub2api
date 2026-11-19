@@ -49,7 +49,8 @@ describe('MonitorCard display density', () => {
     expect(wrapper.get('[data-test="timeline"]').text()).toBe('1:20')
     expect(wrapper.text()).not.toContain('beta')
     expect(wrapper.classes().join(' ')).toContain('p-4')
-    expect(wrapper.classes().join(' ')).toContain('min-h-[240px]')
+    // 卡片高度改由内容撑开，不再用固定最小高度把空卡片拉长。
+    expect(wrapper.classes().join(' ')).toContain('flex-col')
   })
 
   it('keeps the group badge on the flat fallback', () => {

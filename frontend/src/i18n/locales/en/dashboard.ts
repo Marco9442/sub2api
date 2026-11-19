@@ -577,13 +577,18 @@ export default {
     windowTab: {
       '7d': '7 days',
       '15d': '15 days',
-      '30d': '30 days'
+      '30d': '30 days',
+      label: 'Statistics window'
     },
     overall: {
-      operational: 'OPERATIONAL',
-      degraded: 'DEGRADED',
-      failed: 'FAILED',
-      unavailable: 'UNAVAILABLE'
+      operational: 'All operational',
+      degraded: 'Partially degraded',
+      failed: 'Service issue',
+      unavailable: 'Unavailable'
+    },
+    summary: {
+      allHealthy: '{total} channels, all operational',
+      withIssues: '{total} channels, {issues} with issues'
     },
     columns: {
       name: 'Name',
@@ -611,7 +616,9 @@ export default {
       count: '{n} channels'
     },
     legend: {
-      noRecord: 'No record'
+      title: 'Legend',
+      noRecord: 'No record',
+      windowHint: 'Window: last {window}'
     }
   },
 
