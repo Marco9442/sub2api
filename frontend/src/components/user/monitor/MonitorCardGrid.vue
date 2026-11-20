@@ -76,9 +76,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-// auto-fit + minmax(mins, 1fr)：容器窄就少列，宽就多列，不需要为侧边栏展开
-// 状态单独维护一套断点。
-const gridStyle = { gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 20rem), 1fr))' }
+// auto-fill 保留空列位：容器窄就少列，宽就多列，不需要为侧边栏展开
+// 状态单独维护一套断点。用 auto-fill 而不是 auto-fit，单卡分组不会被
+// 拉到整行宽，各分组之间卡片宽度保持一致。
+const gridStyle = { gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 20rem), 1fr))' }
 
 function resolveAvailability(item: UserMonitorView): number | null {
   return item.window_availability ?? null
