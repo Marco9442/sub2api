@@ -41,7 +41,7 @@ type ChannelMonitorCustomConfig struct {
 	TPSEnabled        bool    `json:"tps_enabled"`
 	TPSMin            float64 `json:"tps_min"`
 	TPSMax            float64 `json:"tps_max"`
-	// AvailabilityWindows 用户页可用率的时间档。空值表示默认的 7/15/30 天。
+	// AvailabilityWindows 用户页可用率的时间档。空值表示默认的 90 分钟、1 天、3 天、7 天。
 	AvailabilityWindows []AvailabilityWindow `json:"availability_windows,omitempty"`
 	// StatusYellowPercent / StatusRedPercent 是用户页右上角总状态的百分比。
 	// 失败和出错算红色；降级、失败和出错都算黄色。两边都达到时红色优先。

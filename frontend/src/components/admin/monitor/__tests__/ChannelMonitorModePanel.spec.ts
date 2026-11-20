@@ -91,12 +91,22 @@ describe('ChannelMonitorModePanel', () => {
     expect(wrapper.text()).toContain('channelMonitorCustom.previewDirty')
   })
 
-  it('groups custom settings and uses switches for optional metrics', async () => {
+  it('groups custom settings by intent and uses switches for optional metrics', async () => {
     const wrapper = await mountPanel()
 
-    for (const section of ['prompt', 'thresholds', 'ttft', 'tps', 'status']) {
+    for (const section of ['prompt', 'thresholds', 'ttft', 'tps', 'windows', 'status']) {
       expect(wrapper.find(`[data-section="${section}"]`).exists()).toBe(true)
     }
+    // 设置按「检测 / 展示 / 指标处理」三块归类，管理员按用途找项，而不是在一排同权卡里找。
+    expect(wrapper.find('[data-group="probe"]').text()).toContain('channelMonitorCustom.sectionProbe')
+    expect(wrapper.find('[data-group="display"]').text()).toContain('channelMonitorCustom.sectionDisplay')
+    expect(wrapper.find('[data-group="metrics"]').text()).toContain('channelMonitorCustom.sectionMetrics')
+    expect(wrapper.find('[data-group="probe"] [data-section="prompt"]').exists()).toBe(true)
+    expect(wrapper.find('[data-group="probe"] [data-section="thresholds"]').exists()).toBe(true)
+    expect(wrapper.find('[data-group="display"] [data-section="windows"]').exists()).toBe(true)
+    expect(wrapper.find('[data-group="display"] [data-section="status"]').exists()).toBe(true)
+    expect(wrapper.find('[data-group="metrics"] [data-section="ttft"]').exists()).toBe(true)
+    expect(wrapper.find('[data-group="metrics"] [data-section="tps"]').exists()).toBe(true)
     expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0)
     expect(wrapper.findAll('[role="switch"]')).toHaveLength(2)
     expect(wrapper.find('[data-section="ttft"] input').exists()).toBe(false)

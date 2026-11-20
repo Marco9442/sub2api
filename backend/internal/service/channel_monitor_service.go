@@ -60,6 +60,15 @@ type ChannelMonitorRepository interface {
 	LoadAggregationWatermark(ctx context.Context) (*time.Time, error)
 	// UpdateAggregationWatermark 写 watermark（UPSERT 到 id=1）。
 	UpdateAggregationWatermark(ctx context.Context, date time.Time) error
+
+	// 展示分组只组织状态页。ListEnabled 仍不排序，调度器与用户列表共用它。
+	ListDisplayGroups(ctx context.Context) ([]ChannelMonitorDisplayGroup, error)
+	ListDisplayMemberships(ctx context.Context) ([]ChannelMonitorDisplayMembership, error)
+	NextDisplaySort(ctx context.Context, groupName string) (int, error)
+	CreateDisplayGroup(ctx context.Context, name string) (*ChannelMonitorDisplayGroup, error)
+	RenameDisplayGroup(ctx context.Context, id int64, name string) error
+	DeleteDisplayGroup(ctx context.Context, id int64) (int64, error)
+	ApplyDisplayLayout(ctx context.Context, plan ChannelMonitorDisplayLayoutPlan) error
 }
 
 // channelMonitorRuntimeReader is the optional settings view used to gate V1
@@ -191,6 +200,12 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
 	}
+	if err := s.ensureDisplayGroup(ctx, m.GroupName); err != nil {
+		return nil, err
+	}
+	if err := s.assignDisplaySort(ctx, m); err != nil {
+		return nil, err
+	}
 	if err := s.commitMonitorChange(ctx, p.CustomOverride, func(txCtx context.Context) error {
 		if err := s.repo.Create(txCtx, m); err != nil {
 			return fmt.Errorf("create channel monitor: %w", err)
@@ -270,6 +285,10 @@ func (s *ChannelMonitorService) Duplicate(
 		CheckMode:            defaultCheckMode(source.CheckMode),
 		AccountID:            cloneInt64Pointer(source.AccountID),
 		DuplicateOperationID: operationID,
+	}
+	// 复制沿用原分组名，不要求目录里仍有这一行。尾号在第一次写入前取一次。
+	if err := s.assignDisplaySort(ctx, duplicate); err != nil {
+		return nil, err
 	}
 	sourceOverride, err := s.lookupCustomOverride(ctx, source.ID)
 	if err != nil {
@@ -460,6 +479,10 @@ func (s *ChannelMonitorService) validateLinkedAccount(ctx context.Context, provi
 func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelMonitorUpdateParams) (*ChannelMonitor, error) {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	// 已有监控的分组只能在展示布局里改。这里拒绝后不再进入更新。
+	if err := rejectDisplayGroupEdit(existing.GroupName, p.GroupName); err != nil {
 		return nil, err
 	}
 	wasEnabled := existing.Enabled

@@ -115,9 +115,6 @@ const (
 	// MonitorHistoryMaxLimit 历史查询最大返回条数（handler 层共享）。
 	MonitorHistoryMaxLimit = 1000
 
-	// monitorTimelineMaxPoints 用户视图 timeline 每个监控最多返回的历史点数。
-	monitorTimelineMaxPoints = 60
-
 	// monitorEndpointResolveTimeout validateEndpoint 解析 hostname 的最长耗时。
 	monitorEndpointResolveTimeout = 5 * time.Second
 
@@ -174,6 +171,24 @@ var (
 	)
 	ErrChannelMonitorInvalidInterval = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_INTERVAL", "interval_seconds must be in [15, 3600]",
+	)
+	ErrChannelMonitorInvalidTimelinePoints = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_TIMELINE_POINTS", "timeline_points must be in [1, 200]",
+	)
+	ErrChannelMonitorDisplayGroupInvalid = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_INVALID", "display group name is empty, too long, unknown, or the catalog is full",
+	)
+	ErrChannelMonitorDisplayGroupNameTaken = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_NAME_TAKEN", "display group name is already used",
+	)
+	ErrChannelMonitorDisplayGroupNotFound = infraerrors.NotFound(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_NOT_FOUND", "display group not found",
+	)
+	ErrChannelMonitorDisplayLayoutInvalid = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_LAYOUT_INVALID", "display layout must include each group and monitor exactly once",
+	)
+	ErrChannelMonitorDisplayGroupLayoutRequired = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_DISPLAY_GROUP_LAYOUT_REQUIRED", "existing monitor group membership can only be changed from the display layout",
 	)
 	ErrChannelMonitorInvalidJitter = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_JITTER", "jitter_seconds must be >= 0 and interval_seconds - jitter_seconds must be >= 15",
@@ -243,7 +258,7 @@ var (
 	)
 	ErrChannelMonitorInvalidWindows = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_WINDOWS",
-		"availability windows must be 1-6 unique entries of 1-60 minutes or 1-30 days",
+		"availability windows must be 1-6 unique entries of 1-90 minutes or 1-30 days",
 	)
 	ErrChannelMonitorCustomStreamRequired = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_CUSTOM_STREAM_REQUIRED",

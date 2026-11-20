@@ -30,6 +30,7 @@ export interface UserMonitorView {
   name: string
   provider: Provider
   group_name: string
+  display_sort?: number
   primary_model: string
   primary_status: MonitorStatus
   primary_latency_ms: number | null
@@ -37,7 +38,7 @@ export interface UserMonitorView {
   primary_metric_kind?: string
   primary_ping_latency_ms: number | null
   availability_7d: number | null
-  // Custom 模式下所选时间档的可用率；null 表示该档内没有记录。
+  // 当前时间档的可用率；null 表示该档内没有记录。
   window_availability?: number | null
   extra_models: UserMonitorExtraModel[]
   timeline: MonitorTimelinePoint[]
@@ -48,10 +49,18 @@ export interface UserMonitorView {
   latest_quota?: MonitorQuotaSnapshot | null
 }
 
+export interface UserMonitorGroup {
+  id: number
+  name: string
+  sort_order: number
+}
+
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
-  // Custom 模式下管理员配置的时间档；其他模式为空。
+  groups?: UserMonitorGroup[]
+  // V1 和 Custom 返回时间档。V2 不返回。
   windows?: { amount: number; unit: 'm' | 'd' }[]
+  timeline_points?: number
   // Custom 模式下用户页右上角的黄、红百分比。其他模式不返回。
   status_yellow_percent?: number
   status_red_percent?: number

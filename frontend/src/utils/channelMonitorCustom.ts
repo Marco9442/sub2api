@@ -53,16 +53,17 @@ export interface AvailabilityWindow {
   unit: 'm' | 'd'
 }
 
-const defaultWindows: AvailabilityWindow[] = [
+export const defaultAvailabilityWindows: AvailabilityWindow[] = [
+  { amount: 90, unit: 'm' },
+  { amount: 1, unit: 'd' },
+  { amount: 3, unit: 'd' },
   { amount: 7, unit: 'd' },
-  { amount: 15, unit: 'd' },
-  { amount: 30, unit: 'd' },
 ]
 
 // 解析 "15m,1d,5d"。空文本返回默认档，非法返回 null。规则与后端一致。
 export function parseAvailabilityWindows(raw: string): AvailabilityWindow[] | null {
   const text = raw.trim()
-  if (!text) return defaultWindows.map((w) => ({ ...w }))
+  if (!text) return defaultAvailabilityWindows.map((w) => ({ ...w }))
   const parts = text.split(',').map((p) => p.trim())
   if (parts.length === 0 || parts.length > 6) return null
   const seen = new Set<string>()
@@ -72,7 +73,7 @@ export function parseAvailabilityWindows(raw: string): AvailabilityWindow[] | nu
     if (!match) return null
     const amount = Number(match[1])
     const unit = match[2] as 'm' | 'd'
-    if (amount < 1 || amount > 60) return null
+    if (amount < 1 || amount > 90) return null
     if (unit === 'd' && amount > 30) return null
     const key = `${amount}${unit}`
     if (seen.has(key)) return null

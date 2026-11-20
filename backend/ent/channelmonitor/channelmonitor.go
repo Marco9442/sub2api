@@ -39,6 +39,8 @@ const (
 	FieldExtraModels = "extra_models"
 	// FieldGroupName holds the string denoting the group_name field in the database.
 	FieldGroupName = "group_name"
+	// FieldDisplaySort holds the string denoting the display_sort field in the database.
+	FieldDisplaySort = "display_sort"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// FieldIntervalSeconds holds the string denoting the interval_seconds field in the database.
@@ -103,6 +105,7 @@ var Columns = []string{
 	FieldPrimaryModel,
 	FieldExtraModels,
 	FieldGroupName,
+	FieldDisplaySort,
 	FieldEnabled,
 	FieldIntervalSeconds,
 	FieldJitterSeconds,
@@ -153,6 +156,8 @@ var (
 	DefaultGroupName string
 	// GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.
 	GroupNameValidator func(string) error
+	// DefaultDisplaySort holds the default value on creation for the "display_sort" field.
+	DefaultDisplaySort int
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 	// IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
@@ -261,6 +266,11 @@ func ByPrimaryModel(opts ...sql.OrderTermOption) OrderOption {
 // ByGroupName orders the results by the group_name field.
 func ByGroupName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupName, opts...).ToFunc()
+}
+
+// ByDisplaySort orders the results by the display_sort field.
+func ByDisplaySort(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplaySort, opts...).ToFunc()
 }
 
 // ByEnabled orders the results by the enabled field.

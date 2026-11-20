@@ -553,7 +553,7 @@ export default {
     extraModelsEmpty: '无附加模型',
     latencyEmpty: '-',
     availabilityPrefix: '可用性',
-    dialogLatency: '对话延迟',
+    dialogLatency: '首字速度',
     endpointPing: '端点 PING',
     history60pts: '近 {n} 次记录',
     nextUpdateIn: '{n}s 后刷新',
@@ -582,13 +582,18 @@ export default {
     windowTab: {
       '7d': '7 天',
       '15d': '15 天',
-      '30d': '30 天'
+      '30d': '30 天',
+      label: '统计时间范围'
     },
     overall: {
-      operational: 'OPERATIONAL',
-      degraded: 'DEGRADED',
-      failed: 'FAILED',
-      unavailable: 'UNAVAILABLE'
+      operational: '全部正常',
+      degraded: '部分降级',
+      failed: '存在故障',
+      unavailable: '暂不可用'
+    },
+    summary: {
+      allHealthy: '{total} 个渠道，全部正常',
+      withIssues: '{total} 个渠道，{issues} 个存在异常'
     },
     columns: {
       name: '名称',
@@ -610,6 +615,15 @@ export default {
     empty: {
       title: '暂无可显示的渠道',
       description: '管理员尚未配置可监控的渠道。'
+    },
+    groups: {
+      ungrouped: '未分组',
+      count: '{n} 个渠道'
+    },
+    legend: {
+      title: '图例',
+      noRecord: '无记录',
+      windowHint: '统计范围：最近 {window}'
     }
   },
 

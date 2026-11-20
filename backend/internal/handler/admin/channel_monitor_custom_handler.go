@@ -28,7 +28,7 @@ type channelMonitorCustomConfigRequest struct {
 	TPSEnabled        bool    `json:"tps_enabled"`
 	TPSMin            float64 `json:"tps_min"`
 	TPSMax            float64 `json:"tps_max"`
-	// 空数组表示使用默认的 7/15/30 天。
+	// 空数组表示使用默认的 90 分钟、1 天、3 天、7 天。
 	AvailabilityWindows []availabilityWindowRequest `json:"availability_windows"`
 	// 省略时按 30。0 无法和缺字段区分，保存前补成默认值。
 	StatusYellowPercent int `json:"status_yellow_percent"`

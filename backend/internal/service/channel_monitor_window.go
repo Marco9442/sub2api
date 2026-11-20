@@ -8,7 +8,7 @@ import (
 )
 
 // AvailabilityWindow 是用户页可用率的一个时间档。
-// 数量 1–60，单位是分钟或天，最长 30 天。
+// 数量 1–90，单位是分钟或天，最长 30 天。
 type AvailabilityWindow struct {
 	Amount int    `json:"amount"`
 	Unit   string `json:"unit"`
@@ -16,7 +16,7 @@ type AvailabilityWindow struct {
 
 const (
 	availabilityWindowMaxCount  = 6
-	availabilityWindowMaxAmount = 60
+	availabilityWindowMaxAmount = 90
 	availabilityWindowMaxDays   = 30
 )
 
@@ -32,7 +32,12 @@ func (w AvailabilityWindow) Seconds() int {
 }
 
 func defaultAvailabilityWindows() []AvailabilityWindow {
-	return []AvailabilityWindow{{Amount: 7, Unit: "d"}, {Amount: 15, Unit: "d"}, {Amount: 30, Unit: "d"}}
+	return []AvailabilityWindow{
+		{Amount: 90, Unit: "m"},
+		{Amount: 1, Unit: "d"},
+		{Amount: 3, Unit: "d"},
+		{Amount: 7, Unit: "d"},
+	}
 }
 
 // parseAvailabilityWindows 解析 "15m,1d,5d" 这种文本。空文本返回默认档。

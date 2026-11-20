@@ -514,6 +514,8 @@ const (
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
+	// SettingKeyChannelMonitorTimelinePoints 是状态页卡片上显示的最近记录条数。范围 1–200，缺省 20。
+	SettingKeyChannelMonitorTimelinePoints = "channel_monitor_timeline_points"
 
 	// SettingKeyChannelMonitorHideThroughput hides RPM/TPM (and similar absolute
 	// throughput rates) from non-admin user-facing monitor APIs and UI, so users

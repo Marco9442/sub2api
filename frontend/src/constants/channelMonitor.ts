@@ -77,4 +77,4 @@ export const MONITOR_STATUSES: readonly MonitorStatus[] = [
 ]
 
 /** Default polling interval (seconds) for new monitors. */
-export const DEFAULT_INTERVAL_SECONDS = 60
+export const DEFAULT_INTERVAL_SECONDS = 300

@@ -1,44 +1,45 @@
 <template>
   <button
     type="button"
-    class="group text-left p-5 rounded-2xl min-h-[280px] w-full bg-white/70 backdrop-blur-xl border border-gray-200/80 shadow-card dark:bg-dark-800/60 dark:border-dark-700/70 hover:-translate-y-1 hover:shadow-card-hover dark:hover:border-primary-500/30 hover:border-gray-300 transition-all duration-300 ease-out flex flex-col"
+    class="group relative flex w-full flex-col rounded-2xl border border-gray-200/70 bg-white/75 p-4 text-left shadow-card backdrop-blur-xl transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-card-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 dark:border-dark-700/70 dark:bg-dark-800/60 dark:hover:border-primary-500/30"
     @click="emit('click')"
   >
     <!-- Header: icon + name/model + status chip -->
     <div class="flex items-start gap-3">
       <span
-        class="w-9 h-9 rounded-xl ring-1 ring-black/5 dark:ring-white/10 grid place-items-center flex-shrink-0"
+        class="grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl ring-1 ring-black/5 dark:ring-white/10"
         :class="[providerGradient(item.provider), providerTintClass]"
       >
         <ProviderIcon :provider="item.provider" :size="20" />
       </span>
-      <div class="flex-1 min-w-0">
-        <div class="text-base font-semibold truncate text-gray-900 dark:text-gray-100">
+      <div class="min-w-0 flex-1">
+        <div class="truncate text-base font-semibold text-gray-900 dark:text-gray-100">
           {{ item.name }}
         </div>
-        <div class="mt-0.5 flex items-center gap-1.5 min-w-0">
+        <div class="mt-0.5 flex min-w-0 items-center gap-1.5">
           <span
-            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0"
+            class="inline-flex flex-shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium"
             :class="providerBadgeClass(item.provider)"
           >
             {{ providerLabel(item.provider) }}
           </span>
           <!-- 纯配额模式主模型是占位符 "quota"，展示层替换为本地化「配额」标签 -->
-          <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
+          <span class="truncate font-mono text-xs text-gray-500 dark:text-gray-400">
             {{ formatMonitorModel(item.primary_model) }}
           </span>
           <span
-            v-if="item.group_name"
-            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
+            v-if="item.group_name && !hideGroupBadge"
+            class="inline-flex flex-shrink-0 items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
           >
             {{ item.group_name }}
           </span>
         </div>
       </div>
       <span
-        class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
+        class="flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
         :class="statusBadgeClass(item.primary_status)"
       >
+        <span aria-hidden="true" class="h-1.5 w-1.5 rounded-full" :class="statusDotClass" />
         {{ statusLabel(item.primary_status) }}
       </span>
     </div>
@@ -50,29 +51,24 @@
       :primary-value="primaryMetricValue"
       :primary-unit="primaryMetricUnit"
       :primary-note="tokenRateNote"
-      secondary-icon="globe"
-      :secondary-label="t('monitorCommon.endpointPing')"
-      :secondary-value="formatLatency(item.primary_ping_latency_ms)"
-      secondary-unit="ms"
+      secondary-icon="clock"
+      :secondary-label="t('monitorCommon.availabilityPrefix')"
+      :secondary-value="availabilityDisplay"
+      :secondary-unit="availabilityUnit"
+      :secondary-tone="secondaryTone"
     />
+    <p v-if="extraModelsCountLabel" class="mt-1 text-right text-[11px] text-gray-400">
+      {{ extraModelsCountLabel }}
+    </p>
 
     <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
     <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" conceal-error class="mt-2" />
 
-    <!-- Divider -->
-    <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
-
-    <!-- Availability row -->
-    <MonitorAvailabilityRow
-      :window-label="availabilityLabel"
-      :value="availabilityValue"
-      :samples-label="extraModelsCountLabel"
-    />
-
-    <!-- Timeline -->
+    <!-- Timeline 自带一条上边框，作为卡片内唯一的分割线 -->
     <MonitorTimeline
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
+      :length="timelineLength"
     />
   </button>
 </template>
@@ -81,16 +77,15 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView } from '@/api/channelMonitor'
-import { windowLabel } from '@/utils/channelMonitorCustom'
 import {
   useChannelMonitorFormat,
   providerGradient,
+  availabilityTone,
 } from '@/composables/useChannelMonitorFormat'
 import { isChannelMonitorQuotaVisible } from '@/utils/featureFlags'
 import { resolveMonitorMetricKind, tokenRateDisplay } from '@/utils/channelMonitorMetric'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
-import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
 import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
 
@@ -112,14 +107,16 @@ const props = withDefaults(defineProps<{
   window: string
   availabilityValue: number | null
   countdownSeconds: number
+  timelineLength?: number
   metric?: 'latency' | 'ttft'
-}>(), { metric: 'latency' })
+  hideGroupBadge?: boolean
+}>(), { metric: 'latency', hideGroupBadge: false, timelineLength: 20 })
 
 const emit = defineEmits<{
   (e: 'click'): void
 }>()
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const {
   statusLabel,
   statusBadgeClass,
@@ -132,6 +129,21 @@ const {
 const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
 )
+
+// 圆点只用于承载状态色，避免和头部徽标抢注意力。
+const statusDotClass = computed(() => {
+  switch (props.item.primary_status) {
+    case 'operational':
+      return 'bg-emerald-500'
+    case 'degraded':
+      return 'bg-amber-500'
+    case 'failed':
+    case 'error':
+      return 'bg-red-500'
+    default:
+      return 'bg-current opacity-40'
+  }
+})
 
 const rowKind = computed(() => resolveMonitorMetricKind(props.item.primary_metric_kind, props.metric))
 const tokenRateNote = computed(() => {
@@ -159,12 +171,19 @@ const quotaVisible = computed(
   () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
 )
 
-const availabilityLabel = computed(() => {
-  // 固定档用原有文案；Custom 时间档按分钟或天格式化。
-  const key = `channelStatus.windowTab.${props.window}`
-  const win = te(key) ? t(key) : windowLabel(props.window, t)
-  return `${t('monitorCommon.availabilityPrefix')} · ${win}`
+const availabilityDisplay = computed(() => {
+  if (props.availabilityValue === null || Number.isNaN(props.availabilityValue)) {
+    return t('monitorCommon.latencyEmpty')
+  }
+  return props.availabilityValue.toFixed(2)
 })
+const availabilityUnit = computed(() => (
+  props.availabilityValue === null || Number.isNaN(props.availabilityValue) ? '' : '%'
+))
+
+// 可用率按阈值上色：低于 99 提示注意，低于 95 视为明显不可用。
+// 复用状态徽标的语义色，与管理表格共用同一套判定。
+const secondaryTone = computed(() => availabilityTone(props.availabilityValue))
 
 const extraModelsCountLabel = computed(() => {
   const count = props.item.extra_models?.length ?? 0

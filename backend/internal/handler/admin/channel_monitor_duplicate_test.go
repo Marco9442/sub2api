@@ -29,6 +29,10 @@ func (r *duplicateChannelMonitorHandlerRepoStub) GetByID(_ context.Context, id i
 	return r.source, nil
 }
 
+func (r *duplicateChannelMonitorHandlerRepoStub) NextDisplaySort(context.Context, string) (int, error) {
+	return 0, nil
+}
+
 func (r *duplicateChannelMonitorHandlerRepoStub) Create(_ context.Context, monitor *service.ChannelMonitor) error {
 	r.createCalls++
 	monitor.ID = int64(100 + r.createCalls)

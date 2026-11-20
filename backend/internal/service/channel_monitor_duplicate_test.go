@@ -52,6 +52,10 @@ func (r *duplicateChannelMonitorRepoStub) Create(_ context.Context, monitor *Cha
 	return nil
 }
 
+func (r *duplicateChannelMonitorRepoStub) NextDisplaySort(context.Context, string) (int, error) {
+	return 0, nil
+}
+
 func (r *duplicateChannelMonitorRepoStub) FindByDuplicateOperationID(_ context.Context, operationID string) (*ChannelMonitor, error) {
 	monitor := r.byOperation[operationID]
 	if monitor == nil {
@@ -251,6 +255,10 @@ type createGuardRepo struct {
 func (r *createGuardRepo) Create(context.Context, *ChannelMonitor) error {
 	r.creates++
 	return nil
+}
+
+func (r *createGuardRepo) NextDisplaySort(context.Context, string) (int, error) {
+	return 0, nil
 }
 
 func TestValidateCustomStreamingProbe(t *testing.T) {

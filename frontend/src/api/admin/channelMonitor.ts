@@ -393,6 +393,75 @@ export async function updateMode(
   return data
 }
 
+export interface ChannelMonitorDisplayGroupView {
+  id: number
+  name: string
+  sort_order: number
+  monitor_ids: number[]
+}
+
+export interface ChannelMonitorDisplayMonitor {
+  id: number
+  name: string
+  provider: Provider
+  enabled: boolean
+  group_name: string
+  display_sort: number
+}
+
+export interface ChannelMonitorDisplayAdminView {
+  groups: ChannelMonitorDisplayGroupView[]
+  ungrouped_ids: number[]
+  monitors: ChannelMonitorDisplayMonitor[]
+}
+
+export interface ChannelMonitorDisplayLayoutPayload {
+  groups: { id: number; monitor_ids: number[] }[]
+  ungrouped_ids: number[]
+}
+
+export async function listDisplayGroups(options?: { signal?: AbortSignal }): Promise<ChannelMonitorDisplayAdminView> {
+  const { data } = await apiClient.get<ChannelMonitorDisplayAdminView>('/admin/channel-monitors/display-groups', {
+    signal: options?.signal,
+  })
+  return data
+}
+
+export async function createDisplayGroup(name: string): Promise<{ id: number; name: string; sort_order: number }> {
+  const { data } = await apiClient.post<{ id: number; name: string; sort_order: number }>(
+    '/admin/channel-monitors/display-groups',
+    { name },
+  )
+  return data
+}
+
+export async function renameDisplayGroup(id: number, name: string): Promise<void> {
+  await apiClient.put(`/admin/channel-monitors/display-groups/${id}`, { name })
+}
+
+export async function deleteDisplayGroup(id: number): Promise<void> {
+  await apiClient.delete(`/admin/channel-monitors/display-groups/${id}`)
+}
+
+export async function saveDisplayLayout(payload: ChannelMonitorDisplayLayoutPayload): Promise<void> {
+  await apiClient.put('/admin/channel-monitors/display-groups/layout', payload)
+}
+
+export interface ChannelMonitorDisplaySettings {
+  default_interval_seconds: number
+  timeline_points: number
+}
+
+export async function getDisplaySettings(): Promise<ChannelMonitorDisplaySettings> {
+  const { data } = await apiClient.get<ChannelMonitorDisplaySettings>('/admin/channel-monitors/display-settings')
+  return data
+}
+
+export async function saveDisplaySettings(payload: ChannelMonitorDisplaySettings): Promise<ChannelMonitorDisplaySettings> {
+  const { data } = await apiClient.put<ChannelMonitorDisplaySettings>('/admin/channel-monitors/display-settings', payload)
+  return data
+}
+
 export async function listHistory(
   id: number,
   params: HistoryParams = {}
@@ -414,6 +483,13 @@ export const channelMonitorAPI = {
   runNow,
   getMode,
   updateMode,
+  listDisplayGroups,
+  createDisplayGroup,
+  renameDisplayGroup,
+  deleteDisplayGroup,
+  saveDisplayLayout,
+  getDisplaySettings,
+  saveDisplaySettings,
   listHistory,
 }
 

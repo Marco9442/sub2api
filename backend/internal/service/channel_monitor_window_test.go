@@ -12,10 +12,13 @@ func TestParseAvailabilityWindows_Default(t *testing.T) {
 	got, err := parseAvailabilityWindows("")
 	require.NoError(t, err)
 	require.Equal(t, []AvailabilityWindow{
+		{Amount: 90, Unit: "m"},
+		{Amount: 1, Unit: "d"},
+		{Amount: 3, Unit: "d"},
 		{Amount: 7, Unit: "d"},
-		{Amount: 15, Unit: "d"},
-		{Amount: 30, Unit: "d"},
 	}, got)
+	require.Equal(t, 90*60, got[0].Seconds())
+	require.Equal(t, 24*60*60, got[1].Seconds())
 }
 
 func TestParseAvailabilityWindows_Custom(t *testing.T) {
@@ -33,7 +36,7 @@ func TestParseAvailabilityWindows_Custom(t *testing.T) {
 
 func TestParseAvailabilityWindows_RejectsInvalid(t *testing.T) {
 	for _, raw := range []string{
-		"0d", "61m", "31d", "7h", "7D", "15m,15m",
+		"0d", "91m", "31d", "7h", "24h", "7D", "15m,15m",
 		"1m,2m,3m,4m,5m,6m,7m",
 	} {
 		_, err := parseAvailabilityWindows(raw)

@@ -75,6 +75,9 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Optional().
 			Default("").
 			MaxLen(100),
+		field.Int("display_sort").
+			Default(0).
+			Comment("Order inside a display group. Ties break by id."),
 		field.Bool("enabled").
 			Default(true),
 		field.Int("interval_seconds").

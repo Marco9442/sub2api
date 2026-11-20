@@ -19,9 +19,10 @@ describe('MonitorHero windows', () => {
   it('shows the fixed tabs by default', () => {
     const wrapper = mountHero()
     expect(wrapper.findAll('[role="tab"]').map((b) => b.text())).toEqual([
-      'channelStatus.windowTab.7d',
-      'channelStatus.windowTab.15d',
-      'channelStatus.windowTab.30d',
+      'channelMonitorCustom.windowMinutes:90',
+      'channelMonitorCustom.windowDays:1',
+      'channelMonitorCustom.windowDays:3',
+      'channelMonitorCustom.windowDays:7',
     ])
   })
 

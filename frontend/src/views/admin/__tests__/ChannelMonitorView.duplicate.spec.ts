@@ -29,6 +29,10 @@ vi.mock('@/features/channel-monitor-v2/MonitorSettingsPanel.vue', () => ({
   default: { name: 'MonitorSettingsPanel', template: '<div data-testid="v2-settings" />' },
 }))
 
+vi.mock('@/components/admin/monitor/ChannelMonitorDisplaySettings.vue', () => ({
+  default: { name: 'ChannelMonitorDisplaySettings', template: '<div />' },
+}))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     channelMonitor: {
@@ -118,6 +122,7 @@ function mountView() {
         HelpTooltip: true,
         Toggle: true,
         MonitorFormDialog: true,
+        DisplayGroupPanel: true,
         MonitorTemplateManagerDialog: true,
         MonitorRunResultDialog: true,
         MonitorPrimaryModelCell: true,

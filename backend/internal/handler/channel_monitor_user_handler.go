@@ -56,6 +56,7 @@ type channelMonitorUserListItem struct {
 	Name                 string                               `json:"name"`
 	Provider             string                               `json:"provider"`
 	GroupName            string                               `json:"group_name"`
+	DisplaySort          int                                  `json:"display_sort"`
 	PrimaryModel         string                               `json:"primary_model"`
 	PrimaryStatus        string                               `json:"primary_status"`
 	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
@@ -129,6 +130,7 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		Name:                 v.Name,
 		Provider:             v.Provider,
 		GroupName:            v.GroupName,
+		DisplaySort:          v.DisplaySort,
 		PrimaryModel:         v.PrimaryModel,
 		PrimaryStatus:        v.PrimaryStatus,
 		PrimaryLatencyMs:     v.PrimaryLatencyMs,
@@ -183,23 +185,48 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 
 // --- Handlers ---
 
+type channelMonitorUserGroup struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	SortOrder int    `json:"sort_order"`
+}
+
 // List GET /api/v1/channel-monitors
 func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	if !h.featureEnabled(c) {
 		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}})
 		return
 	}
-	views, err := h.monitorService.ListUserView(c.Request.Context(), c.Query("window"))
+	list, err := h.monitorService.ListUserView(c.Request.Context(), c.Query("window"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if list == nil {
+		list = &service.UserMonitorList{}
+	}
 	includeQuota := h.quotaVisible(c)
-	items := make([]channelMonitorUserListItem, 0, len(views))
-	for _, v := range views {
+	items := make([]channelMonitorUserListItem, 0, len(list.Items))
+	for _, v := range list.Items {
+		if v == nil {
+			continue
+		}
 		items = append(items, userMonitorViewToItem(v, includeQuota))
 	}
-	payload := gin.H{"items": items, "windows": h.monitorService.AvailabilityWindows(c.Request.Context())}
+	groups := make([]channelMonitorUserGroup, 0, len(list.Groups))
+	for _, group := range list.Groups {
+		groups = append(groups, channelMonitorUserGroup{
+			ID:        group.ID,
+			Name:      group.Name,
+			SortOrder: group.SortOrder,
+		})
+	}
+	payload := gin.H{
+		"items":           items,
+		"groups":          groups,
+		"windows":         h.monitorService.AvailabilityWindows(c.Request.Context()),
+		"timeline_points": h.monitorService.TimelinePoints(c.Request.Context()),
+	}
 	if yellow, red := h.monitorService.StatusPercents(c.Request.Context()); yellow > 0 && red > 0 {
 		payload["status_yellow_percent"] = yellow
 		payload["status_red_percent"] = red

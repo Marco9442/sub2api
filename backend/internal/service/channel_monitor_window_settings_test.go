@@ -58,5 +58,5 @@ func TestChannelMonitorCustomWindowsRoundTrip(t *testing.T) {
 	empty := defaultChannelMonitorCustomConfig()
 	require.NoError(t, svc.SaveChannelMonitorMode(context.Background(), ChannelMonitorModeCustom, empty))
 	got, _ = svc.GetChannelMonitorCustom(context.Background())
-	require.Equal(t, "7d,15d,30d", formatAvailabilityWindows(got.AvailabilityWindows))
+	require.Equal(t, "90m,1d,3d,7d", formatAvailabilityWindows(got.AvailabilityWindows))
 }

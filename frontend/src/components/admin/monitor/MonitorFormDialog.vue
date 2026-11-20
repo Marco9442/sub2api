@@ -150,7 +150,13 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.groupName') }}</label>
-        <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
+        <select v-if="!editing" v-model="form.group_name" class="input">
+          <option value="">{{ t('channelStatus.groups.ungrouped') }}</option>
+          <option v-for="group in groups" :key="group.id" :value="group.name">{{ group.name }}</option>
+        </select>
+        <p v-else class="text-sm text-gray-700 dark:text-gray-200">
+          {{ form.group_name || t('channelStatus.groups.ungrouped') }}
+        </p>
       </div>
 
       <div>
@@ -305,6 +311,8 @@ const props = defineProps<{
   show: boolean
   monitor: ChannelMonitor | null
   allowCustomOverride?: boolean
+  groups?: { id: number; name: string }[]
+  beforeWrite?: () => boolean | Promise<boolean>
 }>()
 
 const emit = defineEmits<{
@@ -325,6 +333,7 @@ const systemDefaultInterval = computed<number>(() => {
 
 // editing is true when we have an existing monitor
 const editing = computed<ChannelMonitor | null>(() => props.monitor)
+const groups = computed(() => props.groups ?? [])
 const allowCustomOverride = computed(() => props.allowCustomOverride === true)
 const customOverride = ref<ChannelMonitorCustomOverride>({})
 
@@ -879,9 +888,12 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    if (props.beforeWrite && !(await props.beforeWrite())) return
     const target = editing.value
     if (target) {
-      const { api_key, ...rest } = buildPayload()
+      const payload = buildPayload()
+      const { api_key, ...rest } = payload
+      delete rest.group_name
       const req: UpdateParams = { ...rest }
       // Only send api_key if user typed a new value
       if (api_key) req.api_key = api_key

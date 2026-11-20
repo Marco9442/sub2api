@@ -47,7 +47,7 @@ const props = withDefaults(defineProps<{
   maintenance?: boolean
 }>(), {
   buckets: () => [],
-  length: 60,
+  length: 20,
   maintenance: false,
 })
 

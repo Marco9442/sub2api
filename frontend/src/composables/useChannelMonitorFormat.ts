@@ -252,6 +252,19 @@ export function hslForPct(pct: number | null | undefined): string | undefined {
 }
 
 /**
+ * 用户卡片与管理表格共用的可用率语义档。
+ * 99% 是常见的 SLA 参考线，低于 95% 视为明显不可用。
+ */
+export type AvailabilityTone = 'success' | 'warning' | 'danger' | 'muted'
+
+export function availabilityTone(pct: number | null | undefined): AvailabilityTone {
+  if (pct === null || pct === undefined || Number.isNaN(pct)) return 'muted'
+  if (pct < 95) return 'danger'
+  if (pct < 99) return 'warning'
+  return 'success'
+}
+
+/**
  * Tailwind gradient class for the provider icon tile background.
  */
 export function providerGradient(provider: string): string {
