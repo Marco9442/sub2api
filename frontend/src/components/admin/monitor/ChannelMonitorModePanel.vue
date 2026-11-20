@@ -34,108 +34,136 @@
     </p>
     <p v-else class="input-hint">{{ t('channelMonitorCustom.previewHint') }}</p>
 
-    <div v-if="preview === 'custom'" class="grid gap-4 lg:grid-cols-2">
-      <section data-section="prompt" :class="groupClass">
-        <label class="input-label" for="monitor-custom-prompt">{{ t('channelMonitorCustom.prompt') }}</label>
-        <input
-          id="monitor-custom-prompt"
-          v-model="custom.prompt"
-          class="input"
-          :class="{ 'input-error': errors.prompt }"
-          maxlength="500"
-        />
-        <p v-if="errors.prompt" class="input-error-text">{{ t('channelMonitorCustom.promptInvalid') }}</p>
-        <p v-else class="input-hint">{{ t('channelMonitorCustom.promptHint') }}</p>
-      </section>
-
-      <section data-section="thresholds" :class="groupClass">
-        <div class="grid gap-3 sm:grid-cols-2">
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.yellow') }}</span>
-            <input v-model.number="custom.yellow_seconds" type="number" min="1" class="input" :class="{ 'input-error': errors.thresholds }" />
-          </label>
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.red') }}</span>
-            <input v-model.number="custom.red_seconds" type="number" min="2" class="input" :class="{ 'input-error': errors.thresholds }" />
-          </label>
-        </div>
-        <p v-if="errors.thresholds" class="input-error-text">{{ t('channelMonitorCustom.thresholdsInvalid') }}</p>
-        <p v-else class="input-hint">{{ t('channelMonitorCustom.redHint') }}</p>
-      </section>
-
-      <section data-section="windows" :class="groupClass">
-        <label class="input-label" for="monitor-custom-windows">{{ t('channelMonitorCustom.windows') }}</label>
-        <input
-          id="monitor-custom-windows"
-          v-model="windowsText"
-          class="input"
-          :class="{ 'input-error': windowsInvalid }"
-          placeholder="90m,1d,3d,7d"
-        />
-        <p v-if="windowsInvalid" class="input-error-text">{{ t('channelMonitorCustom.windowsInvalid') }}</p>
-        <p v-else class="input-hint">{{ t('channelMonitorCustom.windowsHint') }}</p>
-      </section>
-
-      <section data-section="ttft" :class="groupClass">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.ttftAdjust') }}</h3>
-            <p class="input-hint">{{ t('channelMonitorCustom.ttftHint') }}</p>
+    <!--
+      设置按用途分成三块：检测决定请求与阈值，展示决定用户看到的时间档和状态，
+      指标处理只改写展示数值。每块用标题隔开，避免一排等高卡片里出现大片空白。
+    -->
+    <div v-if="preview === 'custom'" class="space-y-4">
+      <section data-group="probe" :class="groupClass">
+        <header :class="groupHeaderClass">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorCustom.sectionProbe') }}</h3>
+          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('channelMonitorCustom.sectionProbeHint') }}</p>
+        </header>
+        <div :class="groupBodyClass">
+          <div data-section="prompt" :class="rowClass">
+            <label class="input-label" for="monitor-custom-prompt">{{ t('channelMonitorCustom.prompt') }}</label>
+            <input
+              id="monitor-custom-prompt"
+              v-model="custom.prompt"
+              class="input"
+              :class="{ 'input-error': errors.prompt }"
+              maxlength="500"
+            />
+            <p v-if="errors.prompt" class="input-error-text">{{ t('channelMonitorCustom.promptInvalid') }}</p>
+            <p v-else class="input-hint">{{ t('channelMonitorCustom.promptHint') }}</p>
           </div>
-          <Toggle v-model="custom.ttft_adjust_enabled" :aria-label="t('channelMonitorCustom.ttftAdjust')" />
-        </div>
-        <div v-if="custom.ttft_adjust_enabled" class="mt-3 grid gap-3 sm:grid-cols-3">
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.ttftMultiplier') }}</span>
-            <input v-model.number="custom.ttft_multiplier" type="number" min="0.01" step="0.1" class="input" :class="{ 'input-error': errors.ttft }" />
-          </label>
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.ttftMin') }}</span>
-            <input v-model.number="custom.ttft_min_ms" type="number" min="0" class="input" :class="{ 'input-error': errors.ttft }" />
-          </label>
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.ttftMax') }}</span>
-            <input v-model.number="custom.ttft_max_ms" type="number" min="1" class="input" :class="{ 'input-error': errors.ttft }" />
-          </label>
-        </div>
-        <p v-if="errors.ttft" class="input-error-text">{{ t('channelMonitorCustom.ttftInvalid') }}</p>
-      </section>
 
-      <section data-section="tps" :class="groupClass">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.tps') }}</h3>
-            <p class="input-hint">{{ t('channelMonitorCustom.tpsHint') }}</p>
+          <div data-section="thresholds" :class="rowClass">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.yellow') }}</span>
+                <input v-model.number="custom.yellow_seconds" type="number" min="1" class="input" :class="{ 'input-error': errors.thresholds }" />
+              </label>
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.red') }}</span>
+                <input v-model.number="custom.red_seconds" type="number" min="2" class="input" :class="{ 'input-error': errors.thresholds }" />
+              </label>
+            </div>
+            <p v-if="errors.thresholds" class="input-error-text">{{ t('channelMonitorCustom.thresholdsInvalid') }}</p>
+            <p v-else class="input-hint">{{ t('channelMonitorCustom.redHint') }}</p>
           </div>
-          <Toggle v-model="custom.tps_enabled" :aria-label="t('channelMonitorCustom.tps')" />
         </div>
-        <div v-if="custom.tps_enabled" class="mt-3 grid gap-3 sm:grid-cols-2">
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.tpsMin') }}</span>
-            <input v-model.number="custom.tps_min" type="number" min="0" step="0.1" class="input" :class="{ 'input-error': errors.tps }" />
-          </label>
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.tpsMax') }}</span>
-            <input v-model.number="custom.tps_max" type="number" min="0.1" step="0.1" class="input" :class="{ 'input-error': errors.tps }" />
-          </label>
-        </div>
-        <p v-if="errors.tps" class="input-error-text">{{ t('channelMonitorCustom.tpsInvalid') }}</p>
       </section>
 
-      <section data-section="status" :class="groupClass">
-        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.status') }}</h3>
-        <p class="input-hint">{{ t('channelMonitorCustom.statusHint') }}</p>
-        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.statusYellow') }}</span>
-            <input v-model.number="custom.status_yellow_percent" type="number" min="1" max="100" step="1" class="input" :class="{ 'input-error': errors.status }" />
-          </label>
-          <label>
-            <span class="input-label">{{ t('channelMonitorCustom.statusRed') }}</span>
-            <input v-model.number="custom.status_red_percent" type="number" min="1" max="100" step="1" class="input" :class="{ 'input-error': errors.status }" />
-          </label>
+      <section data-group="display" :class="groupClass">
+        <header :class="groupHeaderClass">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorCustom.sectionDisplay') }}</h3>
+          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('channelMonitorCustom.sectionDisplayHint') }}</p>
+        </header>
+        <div :class="groupBodyClass">
+          <div data-section="windows" :class="rowClass">
+            <label class="input-label" for="monitor-custom-windows">{{ t('channelMonitorCustom.windows') }}</label>
+            <input
+              id="monitor-custom-windows"
+              v-model="windowsText"
+              class="input"
+              :class="{ 'input-error': windowsInvalid }"
+              placeholder="90m,1d,3d,7d"
+            />
+            <p v-if="windowsInvalid" class="input-error-text">{{ t('channelMonitorCustom.windowsInvalid') }}</p>
+            <p v-else class="input-hint">{{ t('channelMonitorCustom.windowsHint') }}</p>
+          </div>
+
+          <div data-section="status" :class="rowClass">
+            <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.status') }}</h4>
+            <p class="input-hint">{{ t('channelMonitorCustom.statusHint') }}</p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.statusYellow') }}</span>
+                <input v-model.number="custom.status_yellow_percent" type="number" min="1" max="100" step="1" class="input" :class="{ 'input-error': errors.status }" />
+              </label>
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.statusRed') }}</span>
+                <input v-model.number="custom.status_red_percent" type="number" min="1" max="100" step="1" class="input" :class="{ 'input-error': errors.status }" />
+              </label>
+            </div>
+            <p v-if="errors.status" class="input-error-text">{{ t('channelMonitorCustom.statusInvalid') }}</p>
+          </div>
         </div>
-        <p v-if="errors.status" class="input-error-text">{{ t('channelMonitorCustom.statusInvalid') }}</p>
+      </section>
+
+      <section data-group="metrics" :class="groupClass">
+        <header :class="groupHeaderClass">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorCustom.sectionMetrics') }}</h3>
+          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('channelMonitorCustom.sectionMetricsHint') }}</p>
+        </header>
+        <div :class="groupBodyClass">
+          <div data-section="ttft" :class="rowClass">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.ttftAdjust') }}</h4>
+                <p class="input-hint">{{ t('channelMonitorCustom.ttftHint') }}</p>
+              </div>
+              <Toggle v-model="custom.ttft_adjust_enabled" :aria-label="t('channelMonitorCustom.ttftAdjust')" />
+            </div>
+            <div v-if="custom.ttft_adjust_enabled" class="mt-3 grid gap-3 sm:grid-cols-3">
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.ttftMultiplier') }}</span>
+                <input v-model.number="custom.ttft_multiplier" type="number" min="0.01" step="0.1" class="input" :class="{ 'input-error': errors.ttft }" />
+              </label>
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.ttftMin') }}</span>
+                <input v-model.number="custom.ttft_min_ms" type="number" min="0" class="input" :class="{ 'input-error': errors.ttft }" />
+              </label>
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.ttftMax') }}</span>
+                <input v-model.number="custom.ttft_max_ms" type="number" min="1" class="input" :class="{ 'input-error': errors.ttft }" />
+              </label>
+            </div>
+            <p v-if="errors.ttft" class="input-error-text">{{ t('channelMonitorCustom.ttftInvalid') }}</p>
+          </div>
+
+          <div data-section="tps" :class="rowClass">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('channelMonitorCustom.tps') }}</h4>
+                <p class="input-hint">{{ t('channelMonitorCustom.tpsHint') }}</p>
+              </div>
+              <Toggle v-model="custom.tps_enabled" :aria-label="t('channelMonitorCustom.tps')" />
+            </div>
+            <div v-if="custom.tps_enabled" class="mt-3 grid gap-3 sm:grid-cols-2">
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.tpsMin') }}</span>
+                <input v-model.number="custom.tps_min" type="number" min="0" step="0.1" class="input" :class="{ 'input-error': errors.tps }" />
+              </label>
+              <label>
+                <span class="input-label">{{ t('channelMonitorCustom.tpsMax') }}</span>
+                <input v-model.number="custom.tps_max" type="number" min="0.1" step="0.1" class="input" :class="{ 'input-error': errors.tps }" />
+              </label>
+            </div>
+            <p v-if="errors.tps" class="input-error-text">{{ t('channelMonitorCustom.tpsInvalid') }}</p>
+          </div>
+        </div>
       </section>
     </div>
   </div>
@@ -159,7 +187,10 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const modes: ChannelMonitorMode[] = ['v1', 'v2', 'custom']
 const modeLabel: Record<ChannelMonitorMode, string> = { v1: 'V1', v2: 'V2', custom: 'Custom' }
-const groupClass = 'rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/30'
+const groupClass = 'rounded-2xl border border-gray-100 dark:border-dark-700'
+const groupHeaderClass = 'border-b border-gray-100 px-4 py-3 dark:border-dark-700/60'
+const groupBodyClass = 'divide-y divide-gray-100 dark:divide-dark-700/60'
+const rowClass = 'px-4 py-4'
 
 // savedCustom 是服务端当前值；custom 是编辑中的草稿，只在 Custom 预览下提交。
 const savedCustom = ref<ChannelMonitorCustomConfig>(defaultCustomConfig())
