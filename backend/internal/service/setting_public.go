@@ -384,22 +384,38 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
 // (mirrors the monitor-level constraint but lives here so setting_service stays decoupled).
 const (
-	channelMonitorIntervalMin      = 15
-	channelMonitorIntervalMax      = 3600
-	channelMonitorIntervalFallback = 60
-	defaultChannelMonitorMode      = ChannelMonitorModeV1
+	channelMonitorIntervalMin           = 15
+	channelMonitorIntervalMax           = 3600
+	channelMonitorIntervalFallback      = 300
+	channelMonitorTimelinePointsDefault = 20
+	channelMonitorTimelinePointsMax     = 200
+	defaultChannelMonitorMode           = ChannelMonitorModeV1
 )
 
-// normalizeChannelMonitorMode accepts only v1/v2; empty/invalid → v1 (safe default).
+// normalizeChannelMonitorMode accepts v1/v2/custom; empty/invalid → v1.
 func normalizeChannelMonitorMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case ChannelMonitorModeV1, "":
-		return ChannelMonitorModeV1
 	case ChannelMonitorModeV2:
 		return ChannelMonitorModeV2
+	case ChannelMonitorModeCustom:
+		return ChannelMonitorModeCustom
+	case ChannelMonitorModeV1, "":
+		return ChannelMonitorModeV1
 	default:
 		return defaultChannelMonitorMode
 	}
+}
+
+// RejectEnteringCustomFromSettings 拒绝从非 Custom 经通用设置进入 Custom。
+// 已经生效时允许原样保存。离开 Custom 仍走这里。进入 Custom 只走渠道监控页。
+func RejectEnteringCustomFromSettings(previous, requested string) error {
+	if normalizeChannelMonitorMode(requested) != ChannelMonitorModeCustom {
+		return nil
+	}
+	if normalizeChannelMonitorMode(previous) == ChannelMonitorModeCustom {
+		return nil
+	}
+	return ErrChannelMonitorCustomModeStale
 }
 
 // parseChannelMonitorInterval parses the stored string and clamps to [15, 3600].
@@ -426,12 +442,26 @@ func clampChannelMonitorInterval(v int) int {
 	return v
 }
 
+// parseChannelMonitorTimelinePoints 把存储值收成 1–200。缺省、无法解析或 0 用默认 20。超过 200 收到 200。
+func parseChannelMonitorTimelinePoints(raw string) int {
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || v <= 0 {
+		return channelMonitorTimelinePointsDefault
+	}
+	if v > channelMonitorTimelinePointsMax {
+		return channelMonitorTimelinePointsMax
+	}
+	return v
+}
+
 // ChannelMonitorRuntime is the lightweight view of the channel monitor feature
 // consumed by the runner, V2 aggregator, and user-facing handlers.
 type ChannelMonitorRuntime struct {
 	Enabled                bool
-	Mode                   string // ChannelMonitorModeV1 or ChannelMonitorModeV2
+	Mode                   string // v1, v2, or custom
 	DefaultIntervalSeconds int
+	// TimelinePoints 是状态页卡片上的记录条数。0 表示调用方改用默认 20。
+	TimelinePoints int
 	// HideThroughput: when true, user-facing V2 APIs omit RPM/TPM scale signals.
 	HideThroughput bool
 	// ShowQuota: when true, user-facing monitor views keep the quota/balance
@@ -443,9 +473,10 @@ type ChannelMonitorRuntime struct {
 	HideUserRanking bool
 }
 
-// ActiveProbesAllowed reports whether V1 active provider probes may run.
+// ActiveProbesAllowed reports whether active provider probes may run.
+// V1 and Custom both probe. V2 stays passive.
 func (r ChannelMonitorRuntime) ActiveProbesAllowed() bool {
-	return r.Enabled && r.Mode == ChannelMonitorModeV1
+	return r.Enabled && (r.Mode == ChannelMonitorModeV1 || r.Mode == ChannelMonitorModeCustom)
 }
 
 // PassiveAggregationAllowed reports whether V2 passive aggregation may run.
@@ -461,6 +492,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 			Enabled:                true,
 			Mode:                   defaultChannelMonitorMode,
 			DefaultIntervalSeconds: channelMonitorIntervalFallback,
+			TimelinePoints:         channelMonitorTimelinePointsDefault,
 			HideThroughput:         true,
 		}
 	}
@@ -468,6 +500,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorMode,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
+		SettingKeyChannelMonitorTimelinePoints,
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyChannelMonitorHideUserRanking,
@@ -477,6 +510,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 			Enabled:                true,
 			Mode:                   defaultChannelMonitorMode,
 			DefaultIntervalSeconds: channelMonitorIntervalFallback,
+			TimelinePoints:         channelMonitorTimelinePointsDefault,
 			HideThroughput:         true,
 		}
 	}
@@ -484,6 +518,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
+		TimelinePoints:         parseChannelMonitorTimelinePoints(vals[SettingKeyChannelMonitorTimelinePoints]),
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
 		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),

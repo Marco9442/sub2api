@@ -1,3 +1,5 @@
+import { toAccountSimPath } from './accountSim'
+
 const DEFAULT_API_BASE_URL = '/api/v1'
 const API_BASE_URL = normalizeAPIBaseURL(import.meta.env.VITE_API_BASE_URL)
 
@@ -26,7 +28,7 @@ export function buildApiUrl(path: string): string {
   } else if (suffix.startsWith(`${DEFAULT_API_BASE_URL}/`)) {
     suffix = suffix.slice(DEFAULT_API_BASE_URL.length)
   }
-  return `${base}${suffix}`
+  return `${base}${toAccountSimPath(suffix)}`
 }
 
 export function buildGatewayUrl(path: string): string {

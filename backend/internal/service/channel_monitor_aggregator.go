@@ -31,7 +31,7 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 		slog.Warn("channel_monitor: batch load latest failed", "error", err)
 		latestMap = map[int64][]*ChannelMonitorLatest{}
 	}
-	availMap, err := s.repo.ComputeAvailabilityForMonitors(ctx, ids, monitorAvailability7Days)
+	availMap, err := s.availabilityForMonitors(ctx, ids, monitorAvailability7Days)
 	if err != nil {
 		slog.Warn("channel_monitor: batch compute availability failed", "error", err)
 		availMap = map[int64][]*ChannelMonitorAvailability{}
@@ -48,20 +48,29 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 	return out
 }
 
-// ListUserView 用户只读视图：列出所有 enabled 监控的概览。
+// ListUserView 用户只读视图：列出所有 enabled 监控的概览，并带上展示分组目录。
+// 目录在空列表短路之前读取，这样没有启用监控时分组仍然返回。
 // 使用批量聚合接口避免 N+1：
 //
+//	1 次查分组目录；
 //	1 次查 monitors；
 //	1 次批量 latest（含 ping_latency_ms）；
 //	1 次批量 7d availability；
 //	1 次批量 timeline（主模型最近 N 条）。
-func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonitorView, error) {
+func (s *ChannelMonitorService) ListUserView(ctx context.Context, windowKey string) (*UserMonitorList, error) {
+	groups, err := s.repo.ListDisplayGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list display groups: %w", err)
+	}
+	if groups == nil {
+		groups = []ChannelMonitorDisplayGroup{}
+	}
 	monitors, err := s.repo.ListEnabled(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)
 	}
 	if len(monitors) == 0 {
-		return []*UserMonitorView{}, nil
+		return &UserMonitorList{Items: []*UserMonitorView{}, Groups: groups}, nil
 	}
 
 	ids, primaryByID, extrasByID := collectMonitorIndexes(monitors)
@@ -74,7 +83,9 @@ func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonito
 		primaryLatest := pickLatest(latestMap[m.ID], m.PrimaryModel)
 		views = append(views, buildUserViewFromSummary(m, summaries[m.ID], primaryLatest, timelineMap[m.ID]))
 	}
-	return views, nil
+	s.fillWindowAvailability(ctx, views, windowKey)
+	sortUserMonitorViews(views, groups)
+	return &UserMonitorList{Items: views, Groups: groups}, nil
 }
 
 // collectMonitorIndexes 把 monitors 列表按 ID 展开为聚合查询所需的三个索引结构。
@@ -100,13 +111,13 @@ func (s *ChannelMonitorService) batchLatest(ctx context.Context, ids []int64) ma
 	return latestMap
 }
 
-// batchTimeline 批量取每个 monitor 主模型最近 monitorTimelineMaxPoints 条历史。
+// batchTimeline 批量取每个 monitor 主模型最近若干条历史。条数来自显示设置，缺省 20。
 func (s *ChannelMonitorService) batchTimeline(
 	ctx context.Context,
 	ids []int64,
 	primaryByID map[int64]string,
 ) map[int64][]*ChannelMonitorHistoryEntry {
-	timelineMap, err := s.repo.ListRecentHistoryForMonitors(ctx, ids, primaryByID, monitorTimelineMaxPoints)
+	timelineMap, err := s.repo.ListRecentHistoryForMonitors(ctx, ids, primaryByID, s.TimelinePoints(ctx))
 	if err != nil {
 		slog.Warn("channel_monitor: user view batch timeline failed", "error", err)
 		return map[int64][]*ChannelMonitorHistoryEntry{}
@@ -162,7 +173,7 @@ func (s *ChannelMonitorService) collectAvailabilityWindows(ctx context.Context, 
 	out := make(map[int]map[string]*ChannelMonitorAvailability, 3)
 	windows := []int{monitorAvailability7Days, monitorAvailability15Days, monitorAvailability30Days}
 	for _, w := range windows {
-		rows, err := s.repo.ComputeAvailability(ctx, monitorID, w)
+		rows, err := s.availabilityForMonitor(ctx, monitorID, w)
 		if err != nil {
 			return nil, fmt.Errorf("compute availability %dd: %w", w, err)
 		}
@@ -203,19 +214,22 @@ func buildStatusSummary(
 	if primary != "" {
 		if l, ok := latestByModel[primary]; ok {
 			summary.PrimaryStatus = l.Status
-			summary.PrimaryLatencyMs = l.LatencyMs
+			summary.PrimaryLatencyMs, summary.PrimaryTokensPerSec = redactDisplayedMetrics(l.MetricKind, l.Status, l.LatencyMs, l.TokensPerSec)
+			summary.PrimaryMetricKind = l.MetricKind
 			// 配额快照只挂主模型行（quota 模式唯一行 / quota_probe 的主行）。
 			summary.LatestQuota = l.Quota
 		}
 		if a, ok := availByModel[primary]; ok {
-			summary.Availability7d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			summary.Availability7d = &pct
 		}
 	}
 	for _, model := range extras {
 		entry := ExtraModelStatus{Model: model}
 		if l, ok := latestByModel[model]; ok {
 			entry.Status = l.Status
-			entry.LatencyMs = l.LatencyMs
+			entry.LatencyMs, entry.TokensPerSec = redactDisplayedMetrics(l.MetricKind, l.Status, l.LatencyMs, l.TokensPerSec)
+			entry.MetricKind = l.MetricKind
 		}
 		summary.ExtraModels = append(summary.ExtraModels, entry)
 	}
@@ -231,16 +245,19 @@ func buildUserViewFromSummary(
 	timelineEntries []*ChannelMonitorHistoryEntry,
 ) *UserMonitorView {
 	view := &UserMonitorView{
-		ID:               m.ID,
-		Name:             m.Name,
-		Provider:         m.Provider,
-		GroupName:        m.GroupName,
-		PrimaryModel:     m.PrimaryModel,
-		PrimaryStatus:    summary.PrimaryStatus,
-		PrimaryLatencyMs: summary.PrimaryLatencyMs,
-		Availability7d:   summary.Availability7d,
-		ExtraModels:      summary.ExtraModels,
-		Timeline:         buildTimelinePoints(timelineEntries),
+		ID:                  m.ID,
+		Name:                m.Name,
+		Provider:            m.Provider,
+		GroupName:           m.GroupName,
+		DisplaySort:         m.DisplaySort,
+		PrimaryModel:        m.PrimaryModel,
+		PrimaryStatus:       summary.PrimaryStatus,
+		PrimaryLatencyMs:    summary.PrimaryLatencyMs,
+		PrimaryTokensPerSec: summary.PrimaryTokensPerSec,
+		PrimaryMetricKind:   summary.PrimaryMetricKind,
+		Availability7d:      summary.Availability7d,
+		ExtraModels:         summary.ExtraModels,
+		Timeline:            buildTimelinePoints(timelineEntries),
 	}
 	if primaryLatest != nil {
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs
@@ -253,9 +270,12 @@ func buildUserViewFromSummary(
 func buildTimelinePoints(entries []*ChannelMonitorHistoryEntry) []UserMonitorTimelinePoint {
 	out := make([]UserMonitorTimelinePoint, 0, len(entries))
 	for _, e := range entries {
+		latency, tokens := redactDisplayedMetrics(e.MetricKind, e.Status, e.LatencyMs, e.TokensPerSec)
 		out = append(out, UserMonitorTimelinePoint{
 			Status:        e.Status,
-			LatencyMs:     e.LatencyMs,
+			LatencyMs:     latency,
+			TokensPerSec:  tokens,
+			MetricKind:    e.MetricKind,
 			PingLatencyMs: e.PingLatencyMs,
 			CheckedAt:     e.CheckedAt,
 		})
@@ -277,17 +297,21 @@ func mergeModelDetails(
 		d := ModelDetail{Model: model}
 		if l, ok := latestByModel[model]; ok {
 			d.LatestStatus = l.Status
-			d.LatestLatencyMs = l.LatencyMs
+			d.LatestLatencyMs, d.LatestTokensPerSec = redactDisplayedMetrics(l.MetricKind, l.Status, l.LatencyMs, l.TokensPerSec)
+			d.MetricKind = l.MetricKind
 		}
 		if a, ok := availMap[monitorAvailability7Days][model]; ok {
-			d.Availability7d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			d.Availability7d = &pct
 			d.AvgLatency7dMs = a.AvgLatencyMs
 		}
 		if a, ok := availMap[monitorAvailability15Days][model]; ok {
-			d.Availability15d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			d.Availability15d = &pct
 		}
 		if a, ok := availMap[monitorAvailability30Days][model]; ok {
-			d.Availability30d = a.AvailabilityPct
+			pct := a.AvailabilityPct
+			d.Availability30d = &pct
 		}
 		out = append(out, d)
 	}

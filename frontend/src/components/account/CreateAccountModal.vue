@@ -4135,7 +4135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { onBeforeUnmount, ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
@@ -4149,6 +4149,7 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
+import { bindAccountSimCalls, isAccountSimPage } from '@/api/accountSim'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -4354,17 +4355,24 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+const requestSim = isAccountSimPage()
+let requestAlive = true
+onBeforeUnmount(() => {
+  requestAlive = false
+})
+const simAccounts = bindAccountSimCalls(adminAPI.accounts, requestSim, () => requestAlive)
+const simGrok = bindAccountSimCalls(adminAPI.grok, requestSim, () => requestAlive)
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
 })
 
-// OAuth composables
-const oauth = useAccountOAuth() // For Anthropic OAuth
-const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
-const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
-const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
-const grokOAuth = useGrokOAuth() // For Grok OAuth
+// OAuth composables。方法内部的请求在第一个 await 前发出，因此包住方法即可固定来源。
+const oauth = bindAccountSimCalls(useAccountOAuth(), requestSim, () => requestAlive)
+const openaiOAuth = bindAccountSimCalls(useOpenAIOAuth(), requestSim, () => requestAlive)
+const geminiOAuth = bindAccountSimCalls(useGeminiOAuth(), requestSim, () => requestAlive)
+const antigravityOAuth = bindAccountSimCalls(useAntigravityOAuth(), requestSim, () => requestAlive)
+const grokOAuth = bindAccountSimCalls(useGrokOAuth(), requestSim, () => requestAlive)
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -5565,7 +5573,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 
   try {
-    const result = await adminAPI.accounts.checkMixedChannelRisk({
+    const result = await simAccounts.checkMixedChannelRisk({
       platform: form.platform,
       group_ids: form.group_ids
     })
@@ -5589,7 +5597,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const account = await simAccounts.create(withAntigravityConfirmFlag(payload))
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5599,7 +5607,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       )
     if (upstreamModelsPreviewed.value || hasConcreteMappedTarget) {
       try {
-        const result = await adminAPI.accounts.syncUpstreamModels(account.id)
+        const result = await simAccounts.syncUpstreamModels(account.id)
         const warnings = result.warnings ?? []
         if (warnings.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
           appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
@@ -5615,7 +5623,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       payload.upstream_billing_probe_enabled === true
     ) {
       try {
-        await adminAPI.accounts.probeUpstreamBilling(account.id)
+        await simAccounts.probeUpstreamBilling(account.id)
       } catch {
         appStore.showWarning(t('admin.accounts.upstreamBilling.probeFailed'))
       }
@@ -6445,7 +6453,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           return
         }
 
-        await adminAPI.accounts.create({
+        await simAccounts.create({
           name: accountName,
           notes: form.notes,
           platform: 'grok',
@@ -6514,7 +6522,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
   }
 
   try {
-    const result = await adminAPI.grok.createFromSSO({
+    const result = await simGrok.createFromSSO({
       sso_tokens: ssoTokens,
       name: form.name || undefined,
       notes: form.notes || undefined,
@@ -6622,7 +6630,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           return
         }
 
-        await adminAPI.accounts.create({
+        await simAccounts.create({
           name: accountName,
           notes: form.notes,
           platform: 'grok',
@@ -6721,7 +6729,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
-      await adminAPI.accounts.create({
+      await simAccounts.create({
         name: form.name,
         notes: form.notes,
         platform: 'openai',
@@ -6829,7 +6837,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
 
   try {
     const extra = buildOpenAICodexImportExtra()
-    const result = await adminAPI.accounts.importCodexSession({
+    const result = await simAccounts.importCodexSession({
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
@@ -6907,7 +6915,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
 
   try {
     const extra = buildOpenAICodexImportExtra()
-    await adminAPI.accounts.createOpenAICodexPAT({
+    await simAccounts.createOpenAICodexPAT({
       access_token: trimmed,
       name: form.name,
       notes: form.notes || null,
@@ -7002,7 +7010,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
-          await adminAPI.accounts.create({
+          await simAccounts.create({
             name: accountName,
             notes: form.notes,
             platform: 'openai',
@@ -7117,7 +7125,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await adminAPI.accounts.create(createPayload)
+        await simAccounts.create(createPayload)
         successCount++
       } catch (error: any) {
         failedCount++
@@ -7284,7 +7292,7 @@ const handleAnthropicExchange = async (authCode: string) => {
         ? '/admin/accounts/exchange-code'
         : '/admin/accounts/exchange-setup-token-code'
 
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+    const tokenInfo = await simAccounts.exchangeCode(endpoint, {
       session_id: oauth.sessionId.value,
       code: authCode.trim(),
       ...proxyConfig
@@ -7409,7 +7417,7 @@ const handleCookieAuth = async (sessionKey: string) => {
 
     for (let i = 0; i < keys.length; i++) {
       try {
-        const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+        const tokenInfo = await simAccounts.exchangeCode(endpoint, {
           session_id: '',
           code: keys[i],
           ...proxyConfig
@@ -7482,7 +7490,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        await adminAPI.accounts.create({
+        await simAccounts.create({
           name: accountName,
           notes: form.notes,
           platform: form.platform,

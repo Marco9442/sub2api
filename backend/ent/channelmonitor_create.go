@@ -145,6 +145,20 @@ func (_c *ChannelMonitorCreate) SetNillableGroupName(v *string) *ChannelMonitorC
 	return _c
 }
 
+// SetDisplaySort sets the "display_sort" field.
+func (_c *ChannelMonitorCreate) SetDisplaySort(v int) *ChannelMonitorCreate {
+	_c.mutation.SetDisplaySort(v)
+	return _c
+}
+
+// SetNillableDisplaySort sets the "display_sort" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableDisplaySort(v *int) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetDisplaySort(*v)
+	}
+	return _c
+}
+
 // SetEnabled sets the "enabled" field.
 func (_c *ChannelMonitorCreate) SetEnabled(v bool) *ChannelMonitorCreate {
 	_c.mutation.SetEnabled(v)
@@ -347,6 +361,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultGroupName
 		_c.mutation.SetGroupName(v)
 	}
+	if _, ok := _c.mutation.DisplaySort(); !ok {
+		v := channelmonitor.DefaultDisplaySort
+		_c.mutation.SetDisplaySort(v)
+	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		v := channelmonitor.DefaultEnabled
 		_c.mutation.SetEnabled(v)
@@ -436,6 +454,9 @@ func (_c *ChannelMonitorCreate) check() error {
 		if err := channelmonitor.GroupNameValidator(v); err != nil {
 			return &ValidationError{Name: "group_name", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.group_name": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.DisplaySort(); !ok {
+		return &ValidationError{Name: "display_sort", err: errors.New(`ent: missing required field "ChannelMonitor.display_sort"`)}
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "ChannelMonitor.enabled"`)}
@@ -544,6 +565,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.GroupName(); ok {
 		_spec.SetField(channelmonitor.FieldGroupName, field.TypeString, value)
 		_node.GroupName = value
+	}
+	if value, ok := _c.mutation.DisplaySort(); ok {
+		_spec.SetField(channelmonitor.FieldDisplaySort, field.TypeInt, value)
+		_node.DisplaySort = value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(channelmonitor.FieldEnabled, field.TypeBool, value)
@@ -825,6 +850,24 @@ func (u *ChannelMonitorUpsert) UpdateGroupName() *ChannelMonitorUpsert {
 // ClearGroupName clears the value of the "group_name" field.
 func (u *ChannelMonitorUpsert) ClearGroupName() *ChannelMonitorUpsert {
 	u.SetNull(channelmonitor.FieldGroupName)
+	return u
+}
+
+// SetDisplaySort sets the "display_sort" field.
+func (u *ChannelMonitorUpsert) SetDisplaySort(v int) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldDisplaySort, v)
+	return u
+}
+
+// UpdateDisplaySort sets the "display_sort" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateDisplaySort() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldDisplaySort)
+	return u
+}
+
+// AddDisplaySort adds v to the "display_sort" field.
+func (u *ChannelMonitorUpsert) AddDisplaySort(v int) *ChannelMonitorUpsert {
+	u.Add(channelmonitor.FieldDisplaySort, v)
 	return u
 }
 
@@ -1189,6 +1232,27 @@ func (u *ChannelMonitorUpsertOne) UpdateGroupName() *ChannelMonitorUpsertOne {
 func (u *ChannelMonitorUpsertOne) ClearGroupName() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearGroupName()
+	})
+}
+
+// SetDisplaySort sets the "display_sort" field.
+func (u *ChannelMonitorUpsertOne) SetDisplaySort(v int) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetDisplaySort(v)
+	})
+}
+
+// AddDisplaySort adds v to the "display_sort" field.
+func (u *ChannelMonitorUpsertOne) AddDisplaySort(v int) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddDisplaySort(v)
+	})
+}
+
+// UpdateDisplaySort sets the "display_sort" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateDisplaySort() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateDisplaySort()
 	})
 }
 
@@ -1743,6 +1807,27 @@ func (u *ChannelMonitorUpsertBulk) UpdateGroupName() *ChannelMonitorUpsertBulk {
 func (u *ChannelMonitorUpsertBulk) ClearGroupName() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearGroupName()
+	})
+}
+
+// SetDisplaySort sets the "display_sort" field.
+func (u *ChannelMonitorUpsertBulk) SetDisplaySort(v int) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetDisplaySort(v)
+	})
+}
+
+// AddDisplaySort adds v to the "display_sort" field.
+func (u *ChannelMonitorUpsertBulk) AddDisplaySort(v int) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddDisplaySort(v)
+	})
+}
+
+// UpdateDisplaySort sets the "display_sort" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateDisplaySort() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateDisplaySort()
 	})
 }
 

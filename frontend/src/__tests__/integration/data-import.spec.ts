@@ -99,6 +99,33 @@ describe('ImportDataModal', () => {
     expect(adminAPI.accounts.importData).not.toHaveBeenCalled()
   })
 
+  it('读文件期间离开账号管理 #2 则取消尚未发出的导入', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    window.history.replaceState({}, '', '/admin/accounts-2')
+    let releaseText: (value: string) => void = () => {}
+    const pending = new Promise<string>((resolve) => {
+      releaseText = resolve
+    })
+    const file = new File(['{}'], 'data.json', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: () => pending })
+
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [file])
+    await input.trigger('change')
+    const submitted = wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    window.history.replaceState({}, '', '/admin/accounts')
+    wrapper.unmount()
+    releaseText(JSON.stringify({ proxies: [], accounts: [] }))
+    await submitted
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).not.toHaveBeenCalled()
+    window.history.replaceState({}, '', '/')
+  })
+
   it('无有效 JSON 的选择不清空已有选择', async () => {
     const { adminAPI } = await import('@/api/admin')
     vi.mocked(adminAPI.accounts.importData).mockResolvedValue({

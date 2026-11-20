@@ -153,6 +153,18 @@ func (f ChannelMonitorDailyRollupFunc) Mutate(ctx context.Context, m ent.Mutatio
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorDailyRollupMutation", m)
 }
 
+// The ChannelMonitorDisplayGroupFunc type is an adapter to allow the use of ordinary
+// function as ChannelMonitorDisplayGroup mutator.
+type ChannelMonitorDisplayGroupFunc func(context.Context, *ent.ChannelMonitorDisplayGroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ChannelMonitorDisplayGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ChannelMonitorDisplayGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorDisplayGroupMutation", m)
+}
+
 // The ChannelMonitorHistoryFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitorHistory mutator.
 type ChannelMonitorHistoryFunc func(context.Context, *ent.ChannelMonitorHistoryMutation) (ent.Value, error)

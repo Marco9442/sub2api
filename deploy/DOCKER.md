@@ -2,6 +2,8 @@
 
 Sub2API is an AI API Gateway Platform for distributing and managing AI product subscription API quotas.
 
+本仓镜像标签以 [docs/ci-cd.md](../docs/ci-cd.md) 为准。下文的 `weishaw/sub2api` 和 `latest` 是上游 Docker Hub 说明，不是本仓发布。
+
 ## Quick Start
 
 ```bash

@@ -47,6 +47,10 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
+		// 账号管理 #2：只挂一个通配路由，由 accountsim 内部分发。
+		if h.Admin.AccountSim != nil {
+			admin.Any("/account-sim/*path", h.Admin.AccountSim.Serve)
+		}
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
@@ -805,6 +809,15 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 	{
 		monitors.GET("", h.Admin.ChannelMonitor.List)
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
+		monitors.GET("/mode", h.Admin.ChannelMonitor.GetMode)
+		monitors.PUT("/mode", h.Admin.ChannelMonitor.UpdateMode)
+		monitors.GET("/display-settings", h.Admin.ChannelMonitor.GetDisplaySettings)
+		monitors.PUT("/display-settings", h.Admin.ChannelMonitor.UpdateDisplaySettings)
+		monitors.GET("/display-groups", h.Admin.ChannelMonitor.ListDisplayGroups)
+		monitors.POST("/display-groups", h.Admin.ChannelMonitor.CreateDisplayGroup)
+		monitors.PUT("/display-groups/layout", h.Admin.ChannelMonitor.ApplyDisplayLayout)
+		monitors.PUT("/display-groups/:id", h.Admin.ChannelMonitor.RenameDisplayGroup)
+		monitors.DELETE("/display-groups/:id", h.Admin.ChannelMonitor.DeleteDisplayGroup)
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.POST("/:id/duplicate", h.Admin.ChannelMonitor.Duplicate)
 		monitors.PUT("/:id", h.Admin.ChannelMonitor.Update)

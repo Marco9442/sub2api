@@ -664,7 +664,10 @@
             :window-stats="bar.windowStats"
             :color="bar.color"
           />
-          <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
+          <p
+            v-if="!hideGeminiSimulatedNote"
+            class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic"
+          >
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' }}
           </p>
         </div>
@@ -765,7 +768,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
+import { ref, computed, inject, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
+import { hideGeminiSimulatedNoteKey } from '@/composables/accountSimPage'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
@@ -792,6 +796,8 @@ import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+const hideGeminiSimulatedNote = inject(hideGeminiSimulatedNoteKey, false)
 
 const props = withDefaults(
   defineProps<{

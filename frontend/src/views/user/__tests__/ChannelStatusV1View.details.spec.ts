@@ -12,25 +12,37 @@ vi.mock('vue-i18n', async () => ({
 enableAutoUnmount(afterEach)
 afterEach(() => { vi.useRealTimers(); localStorage.clear() })
 
-function detail(availability: number) {
-  return { id: 1, models: [{ model: 'model', availability_15d: availability, availability_30d: availability }] }
-}
 beforeEach(() => {
   vi.useFakeTimers()
   vi.resetAllMocks()
   localStorage.clear()
   localStorage.setItem('channel-status-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 30 }))
-  mocks.list.mockImplementation(async () => ({ items: [{ id: 1, name: 'Monitor', primary_model: 'model', primary_status: 'operational', availability_7d: 99 }] }))
-  mocks.status.mockResolvedValue(detail(90))
+  mocks.list.mockImplementation(async (opts: { window?: string }) => ({
+    items: [{
+      id: 1,
+      name: 'Monitor',
+      primary_model: 'model',
+      primary_status: 'operational',
+      availability_7d: 99,
+      window_availability: opts?.window === '1d' ? 90 : opts?.window === '3d' ? 98 : 70,
+    }],
+    windows: [
+      { amount: 90, unit: 'm' },
+      { amount: 1, unit: 'd' },
+      { amount: 3, unit: 'd' },
+      { amount: 7, unit: 'd' },
+    ],
+    timeline_points: 20,
+  }))
 })
 
 function mountView() {
   return shallowMount(ChannelStatusV1View, {
     global: { stubs: {
       AppLayout: { template: '<div><slot /></div>' },
-      MonitorHero: { props: ['loading'], emits: ['update:window', 'refresh'], template: `<div :data-loading="loading">
-        <button class="fifteen" @click="$emit('update:window', '15d')">15d</button>
-        <button class="thirty" @click="$emit('update:window', '30d')">30d</button>
+      MonitorHero: { props: ['loading', 'window'], emits: ['update:window', 'refresh'], template: `<div :data-loading="loading" :data-window="window">
+        <button class="one-day" @click="$emit('update:window', '1d')">1d</button>
+        <button class="three-day" @click="$emit('update:window', '3d')">3d</button>
         <button class="refresh" @click="$emit('refresh')">Refresh</button>
       </div>` },
       MonitorCardGrid: false,
@@ -39,39 +51,43 @@ function mountView() {
   })
 }
 
-describe('channel monitor automatic detail refresh', () => {
-  it.each(['fifteen', 'thirty'])('refreshes the cached %s-day availability on timer ticks', async (tab) => {
+describe('channel monitor window availability', () => {
+  it('loads the default window from the list and does not call status', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-window]').attributes('data-window')).toBe('90m')
+    expect(wrapper.get('output').text()).toBe('70')
+    expect(mocks.list).toHaveBeenCalledTimes(1)
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ window: '90m' }))
+    expect(mocks.status).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['one-day', '1d', '90'],
+    ['three-day', '3d', '98'],
+  ])('reloads the list for the %s window', async (tab, window, availability) => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('.' + tab).trigger('click')
     await flushPromises()
-    expect(wrapper.get('output').text()).toBe('90')
-    mocks.status.mockResolvedValue(detail(98))
-    await vi.advanceTimersByTimeAsync(30000)
-    await flushPromises()
-    expect(wrapper.get('output').text()).toBe('98')
-    expect(mocks.status).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('output').text()).toBe(availability)
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ window }))
+    expect(mocks.status).not.toHaveBeenCalled()
     expect(wrapper.get('[data-loading]').attributes('data-loading')).toBe('false')
   })
 
-  it('keeps the seven-day view on the list endpoint without extra detail requests', async () => {
+  it('refreshes the selected window from the list on timer ticks', async () => {
     const wrapper = mountView()
     await flushPromises()
+    mocks.list.mockImplementation(async () => ({
+      items: [{ id: 1, name: 'Monitor', primary_model: 'model', primary_status: 'operational', availability_7d: 99, window_availability: 81 }],
+      windows: [{ amount: 90, unit: 'm' }],
+      timeline_points: 20,
+    }))
     await vi.advanceTimersByTimeAsync(30000)
     await flushPromises()
     expect(mocks.list).toHaveBeenCalledTimes(2)
     expect(mocks.status).not.toHaveBeenCalled()
-    expect(wrapper.get('output').text()).toBe('99')
-  })
-
-  it('still refreshes cached availability on manual reload', async () => {
-    const wrapper = mountView()
-    await flushPromises()
-    await wrapper.get('.fifteen').trigger('click')
-    await flushPromises()
-    mocks.status.mockResolvedValue(detail(98))
-    await wrapper.get('.refresh').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('output').text()).toBe('98')
+    expect(wrapper.get('output').text()).toBe('81')
   })
 })

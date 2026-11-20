@@ -9,13 +9,21 @@ type SanitizeOptions = {
   allowDataUrl?: boolean
 }
 
+const relativePathUnsafe = /[\s\\:]/
+
+export function isSameOriginPath(value: string): boolean {
+  if (!value.startsWith('/') || value.startsWith('//')) return false
+  if (relativePathUnsafe.test(value)) return false
+  return true
+}
+
 export function sanitizeUrl(value: string, options: SanitizeOptions = {}): string {
   const trimmed = value.trim()
   if (!trimmed) {
     return ''
   }
 
-  if (options.allowRelative && trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+  if (options.allowRelative && isSameOriginPath(trimmed)) {
     return trimmed
   }
 

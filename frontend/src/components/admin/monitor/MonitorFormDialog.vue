@@ -150,7 +150,13 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.groupName') }}</label>
-        <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
+        <select v-if="!editing" v-model="form.group_name" class="input">
+          <option value="">{{ t('channelStatus.groups.ungrouped') }}</option>
+          <option v-for="group in groups" :key="group.id" :value="group.name">{{ group.name }}</option>
+        </select>
+        <p v-else class="text-sm text-gray-700 dark:text-gray-200">
+          {{ form.group_name || t('channelStatus.groups.ungrouped') }}
+        </p>
       </div>
 
       <div>
@@ -200,6 +206,18 @@
           />
         </div>
       </details>
+
+      <details
+        v-if="allowCustomOverride"
+        :open="hasCustomOverride(editing?.custom_override)"
+        class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30"
+      >
+        <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('channelMonitorCustom.overrideSection') }}
+        </summary>
+        <p class="mt-1 text-xs text-gray-400">{{ t('channelMonitorCustom.overrideHint') }}</p>
+        <MonitorCustomOverrideFields v-model="customOverride" class="mt-4" />
+      </details>
     </form>
 
     <template #footer>
@@ -243,6 +261,7 @@ import { userGroupsAPI } from '@/api/groups'
 import type {
   BodyOverrideMode,
   ChannelMonitor,
+  ChannelMonitorCustomOverride,
   CreateParams,
   APIMode,
   CheckMode,
@@ -258,6 +277,8 @@ import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
 import { getPlatformTextClass } from '@/components/admin/channel/types'
 import MonitorKeyPickerDialog from '@/components/admin/monitor/MonitorKeyPickerDialog.vue'
 import MonitorAdvancedRequestConfig from '@/components/admin/monitor/MonitorAdvancedRequestConfig.vue'
+import MonitorCustomOverrideFields from '@/components/admin/monitor/MonitorCustomOverrideFields.vue'
+import { hasCustomOverride } from '@/utils/channelMonitorCustom'
 import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
@@ -289,6 +310,9 @@ import {
 const props = defineProps<{
   show: boolean
   monitor: ChannelMonitor | null
+  allowCustomOverride?: boolean
+  groups?: { id: number; name: string }[]
+  beforeWrite?: () => boolean | Promise<boolean>
 }>()
 
 const emit = defineEmits<{
@@ -309,6 +333,9 @@ const systemDefaultInterval = computed<number>(() => {
 
 // editing is true when we have an existing monitor
 const editing = computed<ChannelMonitor | null>(() => props.monitor)
+const groups = computed(() => props.groups ?? [])
+const allowCustomOverride = computed(() => props.allowCustomOverride === true)
+const customOverride = ref<ChannelMonitorCustomOverride>({})
 
 const submitting = ref(false)
 
@@ -744,6 +771,7 @@ function resetForm() {
   form.extra_headers = {}
   form.body_override_mode = 'off'
   form.body_override = null
+  customOverride.value = {}
   suppressFormWatchers = false
 }
 
@@ -766,6 +794,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.extra_headers = { ...(m.extra_headers || {}) }
   form.body_override_mode = m.body_override_mode || 'off'
   form.body_override = m.body_override ? { ...m.body_override } : null
+  customOverride.value = { ...m.custom_override }
   suppressFormWatchers = false
 }
 
@@ -834,6 +863,11 @@ function buildPayload(): CreateParams {
     extra_headers: form.extra_headers,
     body_override_mode: form.body_override_mode,
     body_override: form.body_override,
+    ...(allowCustomOverride.value
+      ? {
+          custom_override: customOverride.value,
+        }
+      : {}),
   }
 }
 
@@ -854,9 +888,12 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    if (props.beforeWrite && !(await props.beforeWrite())) return
     const target = editing.value
     if (target) {
-      const { api_key, ...rest } = buildPayload()
+      const payload = buildPayload()
+      const { api_key, ...rest } = payload
+      delete rest.group_name
       const req: UpdateParams = { ...rest }
       // Only send api_key if user typed a new value
       if (api_key) req.api_key = api_key

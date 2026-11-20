@@ -37,7 +37,7 @@ func (h *ChannelMonitorUserHandler) featureEnabled(c *gin.Context) bool {
 		return true
 	}
 	runtime := h.settingService.GetChannelMonitorRuntime(c.Request.Context())
-	return runtime.Enabled && runtime.Mode == service.ChannelMonitorModeV1
+	return runtime.ActiveProbesAllowed()
 }
 
 // quotaVisible 返回用户端是否展示配额/余额快照（channel_monitor_show_quota，
@@ -56,11 +56,15 @@ type channelMonitorUserListItem struct {
 	Name                 string                               `json:"name"`
 	Provider             string                               `json:"provider"`
 	GroupName            string                               `json:"group_name"`
+	DisplaySort          int                                  `json:"display_sort"`
 	PrimaryModel         string                               `json:"primary_model"`
 	PrimaryStatus        string                               `json:"primary_status"`
 	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
+	PrimaryTokensPerSec  *float64                             `json:"primary_tokens_per_sec,omitempty"`
+	PrimaryMetricKind    string                               `json:"primary_metric_kind,omitempty"`
 	PrimaryPingLatencyMs *int                                 `json:"primary_ping_latency_ms"`
-	Availability7d       float64                              `json:"availability_7d"`
+	Availability7d       *float64                             `json:"availability_7d"`
+	WindowAvailability   *float64                             `json:"window_availability,omitempty"`
 	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
 	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
 	// LatestQuota 主模型最近配额快照；channel_monitor_show_quota=false 时
@@ -71,10 +75,12 @@ type channelMonitorUserListItem struct {
 // channelMonitorUserTimelinePoint 主模型最近一次检测的 timeline 点。
 // 仅用于用户视图 list 响应，admin 视图不使用。
 type channelMonitorUserTimelinePoint struct {
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	CheckedAt     string `json:"checked_at"`
+	Status        string   `json:"status"`
+	LatencyMs     *int     `json:"latency_ms"`
+	TokensPerSec  *float64 `json:"tokens_per_sec,omitempty"`
+	MetricKind    string   `json:"metric_kind,omitempty"`
+	PingLatencyMs *int     `json:"ping_latency_ms"`
+	CheckedAt     string   `json:"checked_at"`
 }
 
 type channelMonitorUserDetailResponse struct {
@@ -86,22 +92,26 @@ type channelMonitorUserDetailResponse struct {
 }
 
 type channelMonitorUserModelStat struct {
-	Model           string  `json:"model"`
-	LatestStatus    string  `json:"latest_status"`
-	LatestLatencyMs *int    `json:"latest_latency_ms"`
-	Availability7d  float64 `json:"availability_7d"`
-	Availability15d float64 `json:"availability_15d"`
-	Availability30d float64 `json:"availability_30d"`
-	AvgLatency7dMs  *int    `json:"avg_latency_7d_ms"`
+	Model              string   `json:"model"`
+	LatestStatus       string   `json:"latest_status"`
+	LatestLatencyMs    *int     `json:"latest_latency_ms"`
+	LatestTokensPerSec *float64 `json:"latest_tokens_per_sec,omitempty"`
+	MetricKind         string   `json:"metric_kind,omitempty"`
+	Availability7d     *float64 `json:"availability_7d"`
+	Availability15d    *float64 `json:"availability_15d"`
+	Availability30d    *float64 `json:"availability_30d"`
+	AvgLatency7dMs     *int     `json:"avg_latency_7d_ms"`
 }
 
 func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channelMonitorUserListItem {
 	extras := make([]dto.ChannelMonitorExtraModelStatus, 0, len(v.ExtraModels))
 	for _, e := range v.ExtraModels {
 		extras = append(extras, dto.ChannelMonitorExtraModelStatus{
-			Model:     e.Model,
-			Status:    e.Status,
-			LatencyMs: e.LatencyMs,
+			Model:        e.Model,
+			Status:       e.Status,
+			LatencyMs:    e.LatencyMs,
+			TokensPerSec: e.TokensPerSec,
+			MetricKind:   e.MetricKind,
 		})
 	}
 	timeline := make([]channelMonitorUserTimelinePoint, 0, len(v.Timeline))
@@ -109,6 +119,8 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		timeline = append(timeline, channelMonitorUserTimelinePoint{
 			Status:        p.Status,
 			LatencyMs:     p.LatencyMs,
+			TokensPerSec:  p.TokensPerSec,
+			MetricKind:    p.MetricKind,
 			PingLatencyMs: p.PingLatencyMs,
 			CheckedAt:     p.CheckedAt.UTC().Format(time.RFC3339),
 		})
@@ -118,31 +130,48 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		Name:                 v.Name,
 		Provider:             v.Provider,
 		GroupName:            v.GroupName,
+		DisplaySort:          v.DisplaySort,
 		PrimaryModel:         v.PrimaryModel,
 		PrimaryStatus:        v.PrimaryStatus,
 		PrimaryLatencyMs:     v.PrimaryLatencyMs,
+		PrimaryTokensPerSec:  v.PrimaryTokensPerSec,
+		PrimaryMetricKind:    v.PrimaryMetricKind,
 		PrimaryPingLatencyMs: v.PrimaryPingLatencyMs,
 		Availability7d:       v.Availability7d,
+		WindowAvailability:   v.WindowAvailability,
 		ExtraModels:          extras,
 		Timeline:             timeline,
 	}
 	if includeQuota {
-		item.LatestQuota = v.LatestQuota
+		item.LatestQuota = userQuotaSnapshot(v.LatestQuota)
 	}
 	return item
+}
+
+// userQuotaSnapshot 复制快照并去掉错误原文和鉴权失败标记。用户页不展示这些说明。
+func userQuotaSnapshot(src *domain.MonitorQuotaSnapshot) *domain.MonitorQuotaSnapshot {
+	if src == nil {
+		return nil
+	}
+	copied := *src
+	copied.Error = ""
+	copied.CredentialInvalid = false
+	return &copied
 }
 
 func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUserDetailResponse {
 	models := make([]channelMonitorUserModelStat, 0, len(d.Models))
 	for _, m := range d.Models {
 		models = append(models, channelMonitorUserModelStat{
-			Model:           m.Model,
-			LatestStatus:    m.LatestStatus,
-			LatestLatencyMs: m.LatestLatencyMs,
-			Availability7d:  m.Availability7d,
-			Availability15d: m.Availability15d,
-			Availability30d: m.Availability30d,
-			AvgLatency7dMs:  m.AvgLatency7dMs,
+			Model:              m.Model,
+			LatestStatus:       m.LatestStatus,
+			LatestLatencyMs:    m.LatestLatencyMs,
+			LatestTokensPerSec: m.LatestTokensPerSec,
+			MetricKind:         m.MetricKind,
+			Availability7d:     m.Availability7d,
+			Availability15d:    m.Availability15d,
+			Availability30d:    m.Availability30d,
+			AvgLatency7dMs:     m.AvgLatency7dMs,
 		})
 	}
 	return &channelMonitorUserDetailResponse{
@@ -156,23 +185,53 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 
 // --- Handlers ---
 
+type channelMonitorUserGroup struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	SortOrder int    `json:"sort_order"`
+}
+
 // List GET /api/v1/channel-monitors
 func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	if !h.featureEnabled(c) {
 		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}})
 		return
 	}
-	views, err := h.monitorService.ListUserView(c.Request.Context())
+	list, err := h.monitorService.ListUserView(c.Request.Context(), c.Query("window"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if list == nil {
+		list = &service.UserMonitorList{}
+	}
 	includeQuota := h.quotaVisible(c)
-	items := make([]channelMonitorUserListItem, 0, len(views))
-	for _, v := range views {
+	items := make([]channelMonitorUserListItem, 0, len(list.Items))
+	for _, v := range list.Items {
+		if v == nil {
+			continue
+		}
 		items = append(items, userMonitorViewToItem(v, includeQuota))
 	}
-	response.Success(c, gin.H{"items": items})
+	groups := make([]channelMonitorUserGroup, 0, len(list.Groups))
+	for _, group := range list.Groups {
+		groups = append(groups, channelMonitorUserGroup{
+			ID:        group.ID,
+			Name:      group.Name,
+			SortOrder: group.SortOrder,
+		})
+	}
+	payload := gin.H{
+		"items":           items,
+		"groups":          groups,
+		"windows":         h.monitorService.AvailabilityWindows(c.Request.Context()),
+		"timeline_points": h.monitorService.TimelinePoints(c.Request.Context()),
+	}
+	if yellow, red := h.monitorService.StatusPercents(c.Request.Context()); yellow > 0 && red > 0 {
+		payload["status_yellow_percent"] = yellow
+		payload["status_red_percent"] = red
+	}
+	response.Success(c, payload)
 }
 
 // GetStatus GET /api/v1/channel-monitors/:id/status

@@ -12,11 +12,15 @@ export interface UserMonitorExtraModel {
   model: string
   status: MonitorStatus
   latency_ms: number | null
+  tokens_per_sec?: number | null
+  metric_kind?: string
 }
 
 export interface MonitorTimelinePoint {
   status: MonitorStatus
   latency_ms: number | null
+  tokens_per_sec?: number | null
+  metric_kind?: string
   ping_latency_ms: number | null
   checked_at: string
 }
@@ -26,11 +30,16 @@ export interface UserMonitorView {
   name: string
   provider: Provider
   group_name: string
+  display_sort?: number
   primary_model: string
   primary_status: MonitorStatus
   primary_latency_ms: number | null
+  primary_tokens_per_sec?: number | null
+  primary_metric_kind?: string
   primary_ping_latency_ms: number | null
-  availability_7d: number
+  availability_7d: number | null
+  // 当前时间档的可用率；null 表示该档内没有记录。
+  window_availability?: number | null
   extra_models: UserMonitorExtraModel[]
   timeline: MonitorTimelinePoint[]
   /**
@@ -40,17 +49,33 @@ export interface UserMonitorView {
   latest_quota?: MonitorQuotaSnapshot | null
 }
 
+export interface UserMonitorGroup {
+  id: number
+  name: string
+  sort_order: number
+}
+
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
+  groups?: UserMonitorGroup[]
+  // V1 和 Custom 返回时间档。V2 不返回。
+  windows?: { amount: number; unit: 'm' | 'd' }[]
+  timeline_points?: number
+  // Custom 模式下用户页右上角的黄、红百分比。其他模式不返回。
+  status_yellow_percent?: number
+  status_red_percent?: number
 }
 
 export interface UserMonitorModelDetail {
   model: string
   latest_status: MonitorStatus
   latest_latency_ms: number | null
-  availability_7d: number
-  availability_15d: number
-  availability_30d: number
+  latest_tokens_per_sec?: number | null
+  metric_kind?: string
+  // 该时间段没有检测记录时为 null
+  availability_7d: number | null
+  availability_15d: number | null
+  availability_30d: number | null
   avg_latency_7d_ms: number | null
 }
 
@@ -65,9 +90,10 @@ export interface UserMonitorDetail {
 /**
  * List all monitor views available to the current user.
  */
-export async function list(options?: { signal?: AbortSignal }): Promise<UserMonitorListResponse> {
+export async function list(options?: { signal?: AbortSignal; window?: string }): Promise<UserMonitorListResponse> {
   const { data } = await apiClient.get<UserMonitorListResponse>('/channel-monitors', {
     signal: options?.signal,
+    params: options?.window ? { window: options.window } : undefined,
   })
   return data
 }

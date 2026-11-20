@@ -25,6 +25,7 @@ builds:
       - -X main.Commit={{.Commit}}
       - -X main.Date={{.Date}}
       - -X main.BuildType=release
+      - -X main.Version={{.Version}}
 
 # 跳过 archives
 archives: []

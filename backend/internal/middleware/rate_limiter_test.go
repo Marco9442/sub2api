@@ -225,6 +225,52 @@ func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 }
 
+func TestRateLimitEntranceKeyIgnoresForwardedHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	list, err := ippkg.NewEgressList([]string{"198.51.100.0/24"}, nil, now, time.Hour, now)
+	require.NoError(t, err)
+	ippkg.SetEntrance(&ippkg.Entrance{
+		TunnelPeer: "baima-edge",
+		MeshPeer:   "baima-mesh",
+		Now:        func() time.Time { return now },
+		Resolve: func(name string) ([]string, error) {
+			if name == "baima-mesh" {
+				return []string{"172.18.0.3"}, nil
+			}
+			return []string{"172.18.0.5"}, nil
+		},
+		List: list,
+	})
+	t.Cleanup(func() { ippkg.SetEntrance(nil) })
+
+	require.Equal(t, "203.0.113.10", clientIPForRateLimit(rateLimitContext("172.18.0.5:1", "203.0.113.10", "")))
+	mesh := clientIPForRateLimit(rateLimitContext("172.18.0.3:1", "198.51.100.8", "203.0.113.10, 198.51.100.8"))
+	require.Equal(t, "proxy:baima-mesh", mesh)
+	require.NotContains(t, mesh, "203.0.113.10")
+	unknown := clientIPForRateLimit(rateLimitContext("172.18.0.9:1", "198.51.100.8", "203.0.113.77, 198.51.100.8"))
+	require.Equal(t, "unknown", unknown)
+	require.NotContains(t, unknown, "203.0.113.77")
+	broken := clientIPForRateLimit(rateLimitContext("172.18.0.5:1", "198.51.100.8", "203.0.113.10, unknown, 198.51.100.8"))
+	require.Equal(t, "proxy:baima-edge", broken)
+	require.NotContains(t, broken, "203.0.113.10")
+}
+
+func rateLimitContext(remoteAddr, connecting, forwarded string) *gin.Context {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req.RemoteAddr = remoteAddr
+	if connecting != "" {
+		req.Header.Set("CF-Connecting-IP", connecting)
+	}
+	if forwarded != "" {
+		req.Header.Set("X-Forwarded-For", forwarded)
+	}
+	c.Request = req
+	return c
+}
+
 func TestRateLimitClientKeyAggregatesIPv6Prefix(t *testing.T) {
 	require.Equal(t, "2001:db8:1:2::/64", rateLimitClientKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd", 64))
 	require.Equal(t, "2001:db8:1:2::/64", rateLimitClientKey("2001:db8:1:2::1", 64))

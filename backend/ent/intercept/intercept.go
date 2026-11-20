@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordisplaygroup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
@@ -428,6 +429,33 @@ func (f TraverseChannelMonitorDailyRollup) Traverse(ctx context.Context, q ent.Q
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ChannelMonitorDailyRollupQuery", q)
+}
+
+// The ChannelMonitorDisplayGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ChannelMonitorDisplayGroupFunc func(context.Context, *ent.ChannelMonitorDisplayGroupQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ChannelMonitorDisplayGroupFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ChannelMonitorDisplayGroupQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ChannelMonitorDisplayGroupQuery", q)
+}
+
+// The TraverseChannelMonitorDisplayGroup type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseChannelMonitorDisplayGroup func(context.Context, *ent.ChannelMonitorDisplayGroupQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseChannelMonitorDisplayGroup) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseChannelMonitorDisplayGroup) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ChannelMonitorDisplayGroupQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ChannelMonitorDisplayGroupQuery", q)
 }
 
 // The ChannelMonitorHistoryFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1186,6 +1214,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:
 		return &query[*ent.ChannelMonitorDailyRollupQuery, predicate.ChannelMonitorDailyRollup, channelmonitordailyrollup.OrderOption]{typ: ent.TypeChannelMonitorDailyRollup, tq: q}, nil
+	case *ent.ChannelMonitorDisplayGroupQuery:
+		return &query[*ent.ChannelMonitorDisplayGroupQuery, predicate.ChannelMonitorDisplayGroup, channelmonitordisplaygroup.OrderOption]{typ: ent.TypeChannelMonitorDisplayGroup, tq: q}, nil
 	case *ent.ChannelMonitorHistoryQuery:
 		return &query[*ent.ChannelMonitorHistoryQuery, predicate.ChannelMonitorHistory, channelmonitorhistory.OrderOption]{typ: ent.TypeChannelMonitorHistory, tq: q}, nil
 	case *ent.ChannelMonitorRequestTemplateQuery:

@@ -632,6 +632,7 @@ var (
 		{Name: "primary_model", Type: field.TypeString, Size: 200},
 		{Name: "extra_models", Type: field.TypeJSON},
 		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
+		{Name: "display_sort", Type: field.TypeInt, Default: 0},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "interval_seconds", Type: field.TypeInt},
 		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0},
@@ -650,7 +651,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[22]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -659,7 +660,7 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[13], ChannelMonitorsColumns[16]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[14], ChannelMonitorsColumns[17]},
 			},
 			{
 				Name:    "channelmonitor_provider",
@@ -679,7 +680,7 @@ var (
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[22]},
 			},
 			{
 				Name:    "channelmonitor_account_id",
@@ -729,6 +730,27 @@ var (
 				Name:    "channelmonitordailyrollup_bucket_date",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[2]},
+			},
+		},
+	}
+	// ChannelMonitorDisplayGroupsColumns holds the columns for the "channel_monitor_display_groups" table.
+	ChannelMonitorDisplayGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+	}
+	// ChannelMonitorDisplayGroupsTable holds the schema information for the "channel_monitor_display_groups" table.
+	ChannelMonitorDisplayGroupsTable = &schema.Table{
+		Name:       "channel_monitor_display_groups",
+		Columns:    ChannelMonitorDisplayGroupsColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorDisplayGroupsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitordisplaygroup_sort_order_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorDisplayGroupsColumns[4], ChannelMonitorDisplayGroupsColumns[0]},
 			},
 		},
 	}
@@ -2106,6 +2128,7 @@ var (
 		BatchImageJobsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
+		ChannelMonitorDisplayGroupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		CompositeModelRoutesTable,
@@ -2184,6 +2207,9 @@ func init() {
 	ChannelMonitorDailyRollupsTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorDailyRollupsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_daily_rollups",
+	}
+	ChannelMonitorDisplayGroupsTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitor_display_groups",
 	}
 	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{

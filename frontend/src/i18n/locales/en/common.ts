@@ -161,6 +161,17 @@ export default {
     }
   },
 
+  accountSim: {
+    open: 'Settings',
+    title: 'Automatic operation',
+    enabled: 'Keep creating and retiring',
+    dailyNew: 'New accounts per day',
+    lifetime: 'Account lifetime (days)',
+    linger: 'Keep after retirement (days)',
+    usageLevel: 'Usage intensity',
+    saveFailed: 'Settings were not saved'
+  },
+
   // Navigation
   nav: {
     dashboard: 'Dashboard',
@@ -180,8 +191,10 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',
+    userDocs: 'Guide',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
+    accounts2: 'Accounts #2',
     plugins: 'Plugins',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',

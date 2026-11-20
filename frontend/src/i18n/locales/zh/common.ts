@@ -161,6 +161,17 @@ export default {
     }
   },
 
+  accountSim: {
+    open: '配置',
+    title: '自动运营',
+    enabled: '持续生成和淘汰',
+    dailyNew: '每天新增',
+    lifetime: '账号寿命（天）',
+    linger: '淘汰后保留（天）',
+    usageLevel: '使用强度',
+    saveFailed: '配置没有保存'
+  },
+
   // Navigation
   nav: {
     dashboard: '仪表盘',
@@ -180,8 +191,10 @@ export default {
     channels: '渠道管理',
     availableChannels: '可用渠道',
     modelPlaza: '模型广场',
+    userDocs: '使用文档',
     subscriptions: '订阅管理',
     accounts: '账号管理',
+    accounts2: '账号管理 #2',
     plugins: '插件管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',

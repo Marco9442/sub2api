@@ -1,51 +1,39 @@
 <template>
   <AppLayout>
     <div class="w-full min-w-0 space-y-6 pb-8">
-      <header
-        class="page-header mb-0 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700 sm:p-6"
-      >
-        <h1 class="page-title flex items-center gap-2 text-xl font-black text-gray-900 dark:text-white">
-          <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400">
+      <header class="page-header mb-0">
+        <h1 class="page-title flex items-center gap-2.5 text-xl font-black text-gray-900 dark:text-white">
+          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
             <Icon name="chart" size="sm" />
           </span>
           {{ t('admin.channelMonitor.title') }}
         </h1>
         <p class="page-description mt-1.5 text-xs text-gray-500 dark:text-gray-400">
           {{
-            isV1Mode
-              ? t('channelMonitorV2.admin.descriptionV1')
-              : t('channelMonitorV2.admin.descriptionV2')
+            savedMode === 'custom'
+              ? t('channelMonitorCustom.savedHint')
+              : savedMode === 'v1'
+                ? t('channelMonitorV2.admin.descriptionV1')
+                : t('channelMonitorV2.admin.descriptionV2')
           }}
         </p>
-        <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
-          <div
-            class="tabs inline-flex w-full max-w-xl flex-wrap sm:w-auto"
-            role="tablist"
-            :aria-label="t('channelMonitorV2.admin.tabAria')"
-          >
-            <button
-              type="button"
-              role="tab"
-              class="tab flex-1 sm:flex-none"
-              :class="adminMonitorTab === 'v2' ? 'tab-active' : ''"
-              :aria-selected="adminMonitorTab === 'v2'"
-              @click="adminMonitorTab = 'v2'"
-            >
-              {{ t('channelMonitorV2.admin.tabV2') }}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              class="tab flex-1 sm:flex-none"
-              :class="adminMonitorTab === 'legacy' ? 'tab-active' : ''"
-              :aria-selected="adminMonitorTab === 'legacy'"
-              @click="adminMonitorTab = 'legacy'"
-            >
-              {{ isV1Mode ? t('channelMonitorV2.admin.tabV1Active') : t('channelMonitorV2.admin.tabV1History') }}
-            </button>
-          </div>
-        </div>
       </header>
+
+      <!-- 检测模式与展示设置分成两张卡：模式是全局开关，显示设置是默认值，混在一起会让保存按钮指向不清。 -->
+      <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+        <ChannelMonitorModePanel v-model:preview="previewMode" v-model:saved="savedMode" />
+      </section>
+
+      <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+        <ChannelMonitorDisplaySettings />
+      </section>
+
+      <DisplayGroupPanel
+        ref="displayGroupPanel"
+        :reload-token="layoutReloadToken"
+        @loaded="displayGroups = $event"
+        @changed="reload"
+      />
 
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 
@@ -72,16 +60,21 @@
                 <Icon name="exclamationTriangle" size="sm" class="text-red-500" />
               </HelpTooltip>
             </div>
+            <div v-if="row.group_name" class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+              {{ row.group_name }}
+            </div>
           </template>
 
           <template #cell-provider="{ row }">
-            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="providerBadgeClass(row.provider)">
-              {{ providerLabel(row.provider) }}
-            </span>
-            <!-- 三种检测模式并列展示，quota 系配额数据源与纯探活一眼可分 -->
-            <span class="ml-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="checkModeBadgeClass(row.check_mode)">
-              {{ checkModeLabel(row.check_mode) }}
-            </span>
+            <div class="flex flex-wrap items-center gap-1">
+              <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="providerBadgeClass(row.provider)">
+                {{ providerLabel(row.provider) }}
+              </span>
+              <!-- 三种检测模式并列展示，quota 系配额数据源与纯探活一眼可分 -->
+              <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" :class="checkModeBadgeClass(row.check_mode)">
+                {{ checkModeLabel(row.check_mode) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-primary_model="{ row }">
@@ -89,11 +82,36 @@
           </template>
 
           <template #cell-availability_7d="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatAvailability(row) }}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm tabular-nums" :class="availabilityTextClass(row)">{{ formatAvailability(row) }}</span>
+              <!-- 细条只做趋势提示，数值仍然可读；避免表格里出现重复的百分比文本 -->
+              <span
+                v-if="availabilityValue(row) !== null"
+                class="h-1.5 w-12 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"
+                aria-hidden="true"
+              >
+                <span
+                  class="block h-full rounded-full transition-[width] duration-300"
+                  :class="availabilityBarClass(row)"
+                  :style="{ width: `${Math.min(100, Math.max(0, availabilityValue(row) ?? 0))}%` }"
+                />
+              </span>
+            </div>
           </template>
 
           <template #cell-latency="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatLatency(row.primary_latency_ms) }}</span>
+            <div class="text-sm text-gray-900 dark:text-gray-100">
+              <div>
+                <template v-if="row.primary_metric_kind === 'quota'">{{ t('channelMonitorCustom.quota') }}</template>
+                <template v-else-if="row.primary_metric_kind === 'ttft'">
+                  {{ row.primary_latency_ms == null ? t('channelMonitorCustom.hidden') : `${formatLatency(row.primary_latency_ms)} ms` }}
+                </template>
+                <template v-else>{{ formatLatency(row.primary_latency_ms) }}</template>
+              </div>
+              <div v-if="tokenRateDisplay(row.primary_metric_kind, row.primary_latency_ms, row.primary_tokens_per_sec) !== 'omit'" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ tokenRateDisplay(row.primary_metric_kind, row.primary_latency_ms, row.primary_tokens_per_sec) === 'hidden' ? t('channelMonitorCustom.hidden') : `${row.primary_tokens_per_sec?.toFixed(3)} token/s` }}
+              </div>
+            </div>
           </template>
 
           <template #cell-enabled="{ row }">
@@ -139,8 +157,11 @@
     <MonitorFormDialog
       :show="showDialog"
       :monitor="editing"
+      :allow-custom-override="previewMode === 'custom'"
+      :groups="displayGroups"
+      :before-write="confirmLayoutDiscard"
       @close="closeDialog"
-      @saved="reload"
+      @saved="onMonitorSaved"
     />
 
     <MonitorTemplateManagerDialog
@@ -163,13 +184,13 @@
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="confirmDelete"
-      @cancel="showDeleteDialog = false"
+      @cancel="cancelMonitorDelete"
     />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -197,14 +218,21 @@ import MonitorRunResultDialog from '@/components/admin/monitor/MonitorRunResultD
 import MonitorPrimaryModelCell from '@/components/admin/monitor/MonitorPrimaryModelCell.vue'
 import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { useChannelMonitorFormat, availabilityTone } from '@/composables/useChannelMonitorFormat'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
-import { isChannelMonitorV1Mode } from '@/utils/featureFlags'
+import { getChannelMonitorMode } from '@/utils/featureFlags'
+import { isActiveChannelMonitorMode, type ChannelMonitorMode } from '@/utils/channelMonitorMode'
+import { tokenRateDisplay } from '@/utils/channelMonitorMetric'
+import ChannelMonitorModePanel from '@/components/admin/monitor/ChannelMonitorModePanel.vue'
+import ChannelMonitorDisplaySettings from '@/components/admin/monitor/ChannelMonitorDisplaySettings.vue'
+import DisplayGroupPanel from '@/components/admin/monitor/DisplayGroupPanel.vue'
+import type { ChannelMonitorDisplayGroupView } from '@/api/admin/channelMonitor'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const isV1Mode = computed(() => isChannelMonitorV1Mode())
-const adminMonitorTab = ref<'v2' | 'legacy'>(isChannelMonitorV1Mode() ? 'legacy' : 'v2')
+const previewMode = ref<ChannelMonitorMode>(getChannelMonitorMode())
+const savedMode = ref<ChannelMonitorMode>(previewMode.value)
+const adminMonitorTab = computed(() => (previewMode.value === 'v2' ? 'v2' : 'legacy'))
 const {
   providerLabel,
   providerBadgeClass,
@@ -213,6 +241,34 @@ const {
   formatLatency,
   formatAvailability,
 } = useChannelMonitorFormat()
+
+/** 表格里的可用率只在有数据时返回数值，用于细条宽度与配色。 */
+function availabilityValue(row: ChannelMonitor): number | null {
+  if (!row.primary_status) return null
+  return row.availability_7d ?? null
+}
+
+const AVAILABILITY_TEXT: Record<string, string> = {
+  danger: 'text-red-600 dark:text-red-400',
+  warning: 'text-amber-600 dark:text-amber-400',
+  muted: 'text-gray-400 dark:text-gray-500',
+}
+
+const AVAILABILITY_BAR: Record<string, string> = {
+  danger: 'bg-red-500',
+  warning: 'bg-amber-500',
+  muted: 'bg-gray-300 dark:bg-dark-600',
+}
+
+function availabilityTextClass(row: ChannelMonitor): string {
+  const tone = availabilityTone(availabilityValue(row))
+  // 有数据但正常时用正文色，避免整列都被染成彩色。
+  return AVAILABILITY_TEXT[tone] ?? 'text-gray-900 dark:text-gray-100'
+}
+
+function availabilityBarClass(row: ChannelMonitor): string {
+  return AVAILABILITY_BAR[availabilityTone(availabilityValue(row))] ?? 'bg-emerald-500'
+}
 
 const monitors = ref<ChannelMonitor[]>([])
 const loading = ref(false)
@@ -223,6 +279,12 @@ const enabledFilter = ref<'' | 'true' | 'false'>('')
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 
 const showDialog = ref(false)
+const displayGroups = ref<ChannelMonitorDisplayGroupView[]>([])
+const displayGroupPanel = ref<{
+  confirmExternalChange?: () => Promise<boolean>
+  hold?: (held: boolean) => void
+} | null>(null)
+const layoutReloadToken = ref(0)
 const showTemplateManager = ref(false)
 const editing = ref<ChannelMonitor | null>(null)
 const showDeleteDialog = ref(false)
@@ -239,7 +301,7 @@ const columns = computed<Column[]>(() => [
   { key: 'provider', label: t('admin.channelMonitor.columns.provider'), sortable: false },
   { key: 'primary_model', label: t('admin.channelMonitor.columns.primaryModel'), sortable: false },
   { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
-  { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
+  { key: 'latency', label: savedMode.value === 'custom' ? t('channelMonitorCustom.ttft') : t('admin.channelMonitor.columns.latency'), sortable: false },
   { key: 'enabled', label: t('admin.channelMonitor.columns.enabled'), sortable: false },
   { key: 'actions', label: t('admin.channelMonitor.columns.actions'), sortable: false },
 ])
@@ -249,7 +311,16 @@ const deleteConfirmMessage = computed(() => {
   return t('admin.channelMonitor.deleteConfirm', { name })
 })
 
+function clampedPage(page: number, total: number, pageSize: number): number {  if (total <= 0 || pageSize <= 0 || page <= 1) return page
+  const last = Math.ceil(total / pageSize)
+  return page > last ? last : page
+}
+
 async function reload() {
+  await loadMonitorPage(false)
+}
+
+async function loadMonitorPage(pageAdjusted: boolean) {
   if (abortController) abortController.abort()
   const ctrl = new AbortController()
   abortController = ctrl
@@ -266,6 +337,11 @@ async function reload() {
 
     const res = await adminAPI.channelMonitor.list(params, { signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
+    const nextPage = clampedPage(pagination.page, res.total, pagination.page_size)
+    if (!pageAdjusted && nextPage !== pagination.page) {
+      pagination.page = nextPage
+      return loadMonitorPage(true)
+    }
     monitors.value = res.items || []
     pagination.total = res.total
   } catch (err: unknown) {
@@ -314,18 +390,56 @@ function closeDialog() {
   editing.value = null
 }
 
+function refreshDisplayGroups() {
+  layoutReloadToken.value += 1
+}
+
+function confirmLayoutDiscard(): boolean | Promise<boolean> {
+  const ask = displayGroupPanel.value?.confirmExternalChange
+  if (!ask) return true
+  return ask()
+}
+
+function beginMonitorWrite(): boolean | Promise<boolean> {
+  const panel = displayGroupPanel.value
+  const ask = panel?.confirmExternalChange
+  if (!ask) {
+    panel?.hold?.(true)
+    return true
+  }
+  return ask().then((ok) => {
+    if (ok) panel.hold?.(true)
+    return ok
+  })
+}
+
+function endMonitorWrite() {
+  displayGroupPanel.value?.hold?.(false)
+}
+
+function onMonitorSaved() {
+  refreshDisplayGroups()
+  reload()
+}
+
 async function toggleEnabled(row: ChannelMonitor) {
+  const allowed = beginMonitorWrite()
+  if (allowed !== true && !(await allowed)) return
   const next = !row.enabled
   try {
     await adminAPI.channelMonitor.update(row.id, { enabled: next })
     row.enabled = next
+    refreshDisplayGroups()
+    await nextTick()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    endMonitorWrite()
   }
 }
 
 async function handleRunNow(row: ChannelMonitor) {
-  if (!isV1Mode.value) {
+  if (!isActiveChannelMonitorMode(savedMode.value)) {
     appStore.showError(t('admin.channelMonitor.runFailed'))
     return
   }
@@ -351,22 +465,36 @@ async function handleDuplicate(row: ChannelMonitor) {
     return
   }
   if (duplicatingIds.has(row.id)) return
+  const allowed = beginMonitorWrite()
+  if (allowed !== true && !(await allowed)) return
+  if (duplicatingIds.has(row.id)) return
 
   duplicatingIds.add(row.id)
   try {
     const duplicate = await adminAPI.channelMonitor.duplicate(row.id)
     appStore.showSuccess(t('admin.channelMonitor.duplicateSuccess', { name: duplicate.name }))
+    refreshDisplayGroups()
+    await nextTick()
     await reload()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.duplicateFailed')))
   } finally {
     duplicatingIds.delete(row.id)
+    endMonitorWrite()
   }
 }
 
-function handleDelete(row: ChannelMonitor) {
+async function handleDelete(row: ChannelMonitor) {
+  const allowed = beginMonitorWrite()
+  if (allowed !== true && !(await allowed)) return
   deleting.value = row
   showDeleteDialog.value = true
+}
+
+function cancelMonitorDelete() {
+  showDeleteDialog.value = false
+  deleting.value = null
+  endMonitorWrite()
 }
 
 async function confirmDelete() {
@@ -374,16 +502,23 @@ async function confirmDelete() {
   try {
     await adminAPI.channelMonitor.del(deleting.value.id)
     appStore.showSuccess(t('admin.channelMonitor.deleteSuccess'))
+    refreshDisplayGroups()
     showDeleteDialog.value = false
     deleting.value = null
+    await nextTick()
     reload()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    endMonitorWrite()
   }
 }
 
 watch(adminMonitorTab, (tab) => {
   if (tab === 'legacy' && monitors.value.length === 0) void reload()
+})
+watch(savedMode, () => {
+  void reload()
 })
 onMounted(() => {
   if (adminMonitorTab.value === 'legacy') void reload()
