@@ -4,13 +4,6 @@
     class="group relative flex w-full flex-col rounded-2xl border border-gray-200/70 bg-white/75 p-4 text-left shadow-card backdrop-blur-xl transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-card-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 dark:border-dark-700/70 dark:bg-dark-800/60 dark:hover:border-primary-500/30"
     @click="emit('click')"
   >
-    <!-- 顶部状态色条：一眼看出整卡健康度，颜色与状态徽标同源 -->
-    <span
-      aria-hidden="true"
-      class="absolute inset-x-4 top-0 h-0.5 rounded-full"
-      :class="statusAccentClass"
-    />
-
     <!-- Header: icon + name/model + status chip -->
     <div class="flex items-start gap-3">
       <span
@@ -71,10 +64,7 @@
     <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
     <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" conceal-error class="mt-2" />
 
-    <!-- Divider -->
-    <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
-
-    <!-- Timeline -->
+    <!-- Timeline 自带一条上边框，作为卡片内唯一的分割线 -->
     <MonitorTimeline
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
@@ -140,21 +130,7 @@ const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
 )
 
-// 色条和圆点只用于承载状态色，避免和头部徽标抢注意力。
-const statusAccentClass = computed(() => {
-  switch (props.item.primary_status) {
-    case 'operational':
-      return 'bg-emerald-500/60'
-    case 'degraded':
-      return 'bg-amber-500/70'
-    case 'failed':
-    case 'error':
-      return 'bg-red-500/70'
-    default:
-      return 'bg-gray-300 dark:bg-dark-600'
-  }
-})
-
+// 圆点只用于承载状态色，避免和头部徽标抢注意力。
 const statusDotClass = computed(() => {
   switch (props.item.primary_status) {
     case 'operational':
