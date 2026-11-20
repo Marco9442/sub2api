@@ -81,6 +81,21 @@ describe('AppSidebar subscription feature flag', () => {
   })
 })
 
+describe('AppSidebar public entries', () => {
+  it('adds model plaza and user docs to the shared account menu as new-tab links', () => {
+    expect(componentSource).toContain("path: '/model-plaza'")
+    expect(componentSource).toContain("path: '/help/'")
+    expect(componentSource).toContain("label: t('nav.modelPlaza')")
+    expect(componentSource).toContain("label: t('nav.userDocs')")
+    expect(componentSource).toContain('external: true, featureFlag: flagModelPlazaEntry')
+    expect(componentSource).toContain('const flagModelPlazaEntry = () => {')
+    expect(componentSource).toContain('model_plaza_require_auth')
+    expect(componentSource).toContain('v-if="item.external"')
+    expect(componentSource).toContain('target="_blank"')
+    expect(componentSource).toContain('rel="noopener noreferrer"')
+  })
+})
+
 describe('AppSidebar MCP entry', () => {
   it('uses the MCP logo and shows the entry only when the deployment enables MCP', () => {
     expect(componentSource).toContain("render: () => h(Icon, { name: 'mcp' })")

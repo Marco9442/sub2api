@@ -112,11 +112,16 @@ func (r *RateLimiter) Allow(ctx context.Context, key string, limit int, window t
 }
 
 // clientIPForRateLimit 返回 IP 维度限流使用的客户端地址。
-// 与审计日志/会话绑定/API Key IP ACL 共用同一套安全客户端 IP 解析
-// （SessionBindingContext 快照：兼容开关开启时信任反代转发头，关闭时走
-// server.trusted_proxies 可信链）。避免默认反代部署下 Gin ClientIP 恒等于
-// 代理地址、所有用户坍缩进同一个限流桶造成整体误拦截。
+// 入口模式有已验证地址时用该地址。已知入口但没有已验证地址时用稳定的对端标记，
+// 未知来源用 unknown。这两类不再回到 Gin 的转发头解析，避免用伪造地址轮换限流桶。
+// 未启用入口时仍走安全客户端地址；它为空时才用 ClientIP，避免所有用户挤进同一个桶。
 func clientIPForRateLimit(c *gin.Context) string {
+	if id, ok := ippkg.CurrentIdentity(c); ok {
+		if key := id.BindingKey(); key != "" {
+			return key
+		}
+		return "unknown"
+	}
 	if resolved := ippkg.GetSecurityClientIP(c, false); resolved != "" {
 		return resolved
 	}

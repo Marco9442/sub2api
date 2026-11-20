@@ -58,6 +58,9 @@ func GetClientIP(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
+	if id, ok := CurrentIdentity(c); ok {
+		return id.ClientIP
+	}
 	if !requestUsesLegacyForwardedIPTrust(c) {
 		return GetTrustedClientIP(c)
 	}
@@ -162,6 +165,9 @@ func GetTrustedClientIP(c *gin.Context) string {
 // client-IP resolution. When disabled, Gin's server.trusted_proxies chain is
 // authoritative.
 func GetSecurityClientIP(c *gin.Context, trustForwarded bool) string {
+	if id, ok := CurrentIdentity(c); ok {
+		return id.ClientIP
+	}
 	if requestSettings, ok := requestForwardedIPSettings(c); ok {
 		trustForwarded = requestSettings.trustForwarded
 	}

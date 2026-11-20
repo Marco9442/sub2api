@@ -173,6 +173,15 @@ func TestSessionBindingHash(t *testing.T) {
 	}
 
 	// 空指纹 → 空哈希（旧 token 兼容）。
+	keyed := &SessionBinding{HashKey: "proxy:edge", UserAgent: "Mozilla/5.0"}
+	if keyed.Hash() == a.Hash() || keyed.Hash() == "" {
+		t.Fatal("hash key must replace the client address in the fingerprint")
+	}
+	sameKey := &SessionBinding{IP: "9.9.9.9", HashKey: "proxy:edge", UserAgent: "Mozilla/5.0"}
+	if keyed.Hash() != sameKey.Hash() {
+		t.Fatal("hash key must override a different client address")
+	}
+
 	empty := &SessionBinding{}
 	if empty.Hash() != "" {
 		t.Fatalf("empty binding must hash to empty string")

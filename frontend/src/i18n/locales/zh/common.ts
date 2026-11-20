@@ -191,6 +191,7 @@ export default {
     channels: '渠道管理',
     availableChannels: '可用渠道',
     modelPlaza: '模型广场',
+    userDocs: '使用文档',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     accounts2: '账号管理 #2',
